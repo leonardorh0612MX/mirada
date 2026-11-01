@@ -1,0 +1,26 @@
+# Local agent runtime state
+.muse/
+
+# Secrets
+.env
+.env.*.local
+
+# Recorded sessions, screenshots, datasets
+data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.vscode/
+
+# pip scratch dirs left at repo root by sandbox installs
+pip-*/
+
+# Generated images in progress (final assets are committed under site/)
+*.tmp

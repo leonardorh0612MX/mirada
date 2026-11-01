@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Mirada">
+  <rect width="256" height="256" rx="58" fill="#e8e8ed"/>
+  <circle cx="128" cy="128" r="72" fill="none" stroke="#1d1d1f" stroke-width="14"/>
+  <circle cx="152" cy="104" r="26" fill="#1d1d1f"/>
+  <circle cx="160" cy="96" r="8" fill="#e8e8ed"/>
+  <path d="M52 200 Q128 232 204 200" fill="none" stroke="#1d1d1f" stroke-width="10" stroke-linecap="round" opacity="0.7"/>
+</svg>

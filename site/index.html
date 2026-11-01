@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mirada — Tus ojos tienen voz</title>
+<meta name="description" content="Mirada: tablero de comunicación controlado solo con la mirada y una webcam común. Accesibilidad sin hardware de miles de dólares.">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<style>
+  :root {
+    --paper: #f7f2e9;
+    --card: #fffdf8;
+    --coffee: #221812;
+    --coffee2: #2e2117;
+    --muted: #857060;
+    --caramel: #b96f1a;
+    --caramel-soft: rgba(185, 111, 26, .14);
+    --line: #e4d8c4;
+    --serif: Georgia, "Times New Roman", serif;
+    --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+    --spring: cubic-bezier(.22, .9, .28, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper);
+    color: var(--coffee);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.65;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--caramel); color: #fff; }
+  :focus-visible { outline: 2px solid var(--caramel); outline-offset: 3px; }
+
+  #gaze-ring {
+    position: fixed; left: 0; top: 0; z-index: 60;
+    width: 34px; height: 34px; margin: -17px 0 0 -17px;
+    border: 2px solid var(--caramel); border-radius: 50%;
+    opacity: 0; pointer-events: none;
+    transition: opacity .4s ease;
+  }
+  #gaze-dot {
+    position: fixed; left: 0; top: 0; z-index: 60;
+    width: 6px; height: 6px; margin: -3px 0 0 -3px;
+    background: var(--caramel); border-radius: 50%;
+    opacity: 0; pointer-events: none;
+    transition: opacity .4s ease;
+  }
+  @media (pointer: coarse) { #gaze-ring, #gaze-dot { display: none; } }
+
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 28px; }
+
+  nav {
+    position: fixed; inset: 0 0 auto 0; z-index: 50;
+    background: rgba(247, 242, 233, .82);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+  nav .wrap { display: flex; align-items: center; gap: 30px; height: 66px; }
+  .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; color: var(--coffee); }
+  .brand svg { width: 30px; height: 30px; display: block; }
+  .brand b { font-size: 21px; font-weight: 800; letter-spacing: -.02em; }
+  nav .links { display: flex; gap: 26px; margin-left: auto; }
+  nav .links a { color: var(--muted); text-decoration: none; font-size: 15px; font-weight: 500; }
+  nav .links a:hover { color: var(--coffee); }
+  .btn {
+    display: inline-block; text-decoration: none;
+    background: var(--coffee); color: #fff;
+    font-weight: 650; font-size: 15px;
+    padding: 11px 24px; border-radius: 999px;
+    transition: transform .2s var(--spring), box-shadow .2s ease, background .2s ease;
+  }
+  .btn:hover { transform: translateY(-2px); background: #000; box-shadow: 0 12px 28px -12px rgba(34, 24, 18, .5); }
+  .btn-ghost {
+    display: inline-block; text-decoration: none; color: var(--coffee);
+    border: 1px solid #cfc0a8; padding: 11px 24px; border-radius: 999px;
+    font-size: 15px; font-weight: 600;
+    transition: border-color .2s ease, transform .2s var(--spring);
+  }
+  .btn-ghost:hover { border-color: var(--coffee); transform: translateY(-2px); }
+  @media (max-width: 720px) { nav .links { display: none; } }
+
+  /* ---- hero ---- */
+  header.hero { position: relative; padding: 190px 0 80px; text-align: center; overflow: hidden; }
+  .liquid { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  .liquid i {
+    position: absolute; border-radius: 50%;
+    filter: blur(70px);
+  }
+  .liquid i:nth-child(1) {
+    width: 560px; height: 560px; left: -140px; top: -160px;
+    background: rgba(232, 163, 61, .34);
+    animation: drift1 16s ease-in-out infinite alternate;
+  }
+  .liquid i:nth-child(2) {
+    width: 640px; height: 640px; right: -180px; top: -80px;
+    background: rgba(185, 111, 26, .22);
+    animation: drift2 20s ease-in-out infinite alternate;
+  }
+  .liquid i:nth-child(3) {
+    width: 420px; height: 420px; left: 38%; bottom: -220px;
+    background: rgba(214, 164, 110, .3);
+    animation: drift1 24s ease-in-out infinite alternate-reverse;
+  }
+  @keyframes drift1 {
+    from { transform: translate(0, 0) scale(1); }
+    to { transform: translate(70px, 50px) scale(1.15); }
+  }
+  @keyframes drift2 {
+    from { transform: translate(0, 0) scale(1.1); }
+    to { transform: translate(-80px, 60px) scale(.95); }
+  }
+  .hero-inner { position: relative; }
+  .eyebrow {
+    display: inline-block; font-size: 13px; font-weight: 700;
+    letter-spacing: .16em; text-transform: uppercase;
+    color: var(--caramel); margin-bottom: 26px;
+  }
+  h1 {
+    font-weight: 800; letter-spacing: -.035em;
+    font-size: clamp(54px, 8.4vw, 108px);
+    line-height: .98; margin-bottom: 26px;
+  }
+  h1 em { font-family: var(--serif); font-style: italic; font-weight: 400; color: var(--caramel); letter-spacing: -.02em; }
+  .lede { font-size: 20px; color: var(--muted); max-width: 36em; margin: 0 auto 36px; }
+  .lede strong { color: var(--coffee); font-weight: 650; }
+  .hero-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 70px; }
+
+  /* ---- live dwell demo ---- */
+  .demo {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 26px;
+    box-shadow: 0 30px 80px -30px rgba(80, 55, 20, .28);
+    padding: 40px 44px 32px;
+    text-align: left;
+    max-width: 880px; margin: 0 auto;
+  }
+  .demo h2 { font-size: 23px; font-weight: 750; letter-spacing: -.02em; margin-bottom: 6px; }
+  .demo p.hint { color: var(--muted); font-size: 15.5px; margin-bottom: 24px; }
+  .chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 640px) { .chips { grid-template-columns: 1fr 1fr; } }
+  .chip {
+    position: relative; overflow: hidden;
+    background: var(--paper); border: 1px solid var(--line);
+    border-radius: 16px; padding: 26px 8px;
+    font-size: 20px; font-weight: 800; letter-spacing: .05em;
+    color: var(--coffee); cursor: pointer; text-align: center;
+    font-family: var(--sans);
+    transition: border-color .2s ease, transform .2s var(--spring);
+  }
+  .chip:hover { border-color: var(--caramel); transform: translateY(-2px); }
+  .chip .fill {
+    position: absolute; inset: 0 auto 0 0; width: 0%;
+    background: linear-gradient(90deg, rgba(232,163,61,.45), rgba(185,111,26,.35));
+    pointer-events: none;
+  }
+  .chip span.w { position: relative; }
+  .chip.spoke { border-color: var(--caramel); background: #fbf3e2; }
+  .demo .said {
+    margin-top: 20px; min-height: 32px;
+    font-family: var(--serif); font-style: italic; font-size: 21px;
+    color: var(--caramel);
+  }
+
+  /* ---- ticker ---- */
+  .ticker {
+    background: var(--coffee); color: #efe6d6;
+    overflow: hidden; white-space: nowrap;
+    padding: 15px 0; margin-top: 84px;
+  }
+  .ticker span {
+    display: inline-block; padding-right: 0;
+    font-family: var(--serif); font-size: 19px; font-style: italic;
+    animation: tick 32s linear infinite;
+  }
+  .ticker b { color: var(--caramel); font-weight: 400; }
+  @keyframes tick { to { transform: translateX(-50%); } }
+
+  /* ---- sections ---- */
+  section.block { padding: 110px 0; }
+  .kicker {
+    font-size: 13px; font-weight: 700; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--caramel); margin-bottom: 20px;
+  }
+  h2.title {
+    font-weight: 780; letter-spacing: -.03em;
+    font-size: clamp(34px, 4.6vw, 56px); line-height: 1.05;
+    margin-bottom: 22px; max-width: 15em;
+  }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
+  @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
+  .cols p { color: var(--muted); margin-bottom: 16px; font-size: 18px; }
+  .cols p strong { color: var(--coffee); }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 22px; padding: 38px 40px;
+    box-shadow: 0 24px 60px -30px rgba(80, 55, 20, .25);
+  }
+  .stat { font-weight: 800; letter-spacing: -.03em; font-size: clamp(60px, 7vw, 92px); line-height: 1; }
+  .stat small { font-size: 24px; color: var(--caramel); font-family: var(--serif); font-style: italic; font-weight: 400; }
+  .stat-cap { color: var(--muted); font-size: 15.5px; margin-top: 12px; }
+
+  figure.art { margin: 0; }
+  figure.art img { display: block; width: 100%; height: clamp(300px, 48vw, 560px); object-fit: cover; }
+  figure.art figcaption {
+    max-width: 1160px; margin: 0 auto; padding: 14px 28px 0;
+    color: var(--muted); font-size: 14px; font-style: italic;
+    font-family: var(--serif);
+  }
+
+  /* ---- steps ---- */
+  .step {
+    display: grid; grid-template-columns: 120px 1fr;
+    gap: 30px; padding: 38px 0;
+    border-bottom: 1px solid var(--line);
+    align-items: baseline;
+  }
+  .step:last-child { border-bottom: 0; }
+  .step .n {
+    font-family: var(--serif); font-style: italic;
+    font-size: 58px; line-height: 1; color: var(--caramel);
+  }
+  .step h3 { font-size: 24px; letter-spacing: -.02em; margin-bottom: 8px; }
+  .step p { color: var(--muted); max-width: 46em; font-size: 18px; }
+  .step code {
+    font-family: ui-monospace, Consolas, monospace; font-size: 14px;
+    background: #efe5d3; padding: 2px 9px; border-radius: 7px;
+    color: #8a5410;
+  }
+
+  /* ---- dark tech section ---- */
+  section.dark { background: var(--coffee); color: #f3ecdf; border-radius: 32px; margin: 0 18px; }
+  section.dark .kicker { color: #e8a33d; }
+  section.dark .panel p { color: #c9bba6; max-width: 54em; margin-bottom: 16px; font-size: 18px; }
+  section.dark .panel p:last-child { margin-bottom: 0; }
+  section.dark .panel strong { color: #fff; }
+
+  blockquote.voice {
+    font-family: var(--serif); font-size: clamp(28px, 3.6vw, 42px);
+    line-height: 1.32; max-width: 21em;
+    border-left: 3px solid var(--caramel);
+    padding-left: 30px; margin: 14px 0 0;
+  }
+  blockquote.voice footer {
+    font-family: var(--sans); font-size: 15px; font-style: normal;
+    color: var(--muted); margin-top: 16px;
+  }
+
+  footer.page {
+    border-top: 1px solid var(--line);
+    padding: 46px 0 64px; color: var(--muted); font-size: 15px;
+  }
+  footer.page .wrap { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+  footer.page svg { width: 26px; height: 26px; }
+  footer.page .right { margin-left: auto; }
+
+  /* ---- reveal ---- */
+  .rv { opacity: 0; transform: translateY(20px); filter: blur(5px); transition: opacity .8s var(--spring), transform .8s var(--spring), filter .8s ease; }
+  .rv.in { opacity: 1; transform: none; filter: none; }
+  .rv-soft { opacity: 0; transition: opacity 1s ease; }
+  .rv-soft.in { opacity: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .ticker span, .liquid i { animation: none; }
+    .rv, .rv-soft { opacity: 1; transform: none; filter: none; transition: none; }
+    #gaze-ring, #gaze-dot { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="gaze-ring" aria-hidden="true"></div>
+<div id="gaze-dot" aria-hidden="true"></div>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Mirada, inicio">
+      <svg viewBox="0 0 256 256" aria-hidden="true"><rect width="256" height="256" rx="58" fill="#221812"/><circle cx="128" cy="128" r="72" fill="none" stroke="#e8a33d" stroke-width="16"/><circle cx="152" cy="104" r="26" fill="#e8a33d"/></svg>
+      <b>Mirada</b>
+    </a>
+    <div class="links">
+      <a href="#problema">El problema</a>
+      <a href="#como">Cómo funciona</a>
+      <a href="#tecnologia">Tecnología</a>
+    </div>
+    <a class="btn" href="#demo" style="margin-left:18px">Probar demo</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="liquid" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="wrap hero-inner">
+    <span class="eyebrow rv">Accesibilidad · Hackathon Meta 2026</span>
+    <h1 class="rv">Tus ojos<br>tienen <em>voz.</em></h1>
+    <p class="lede rv">Mirada es un tablero de comunicación que se controla <strong>solo con la mirada</strong> y una webcam común. Sin hardware de miles de dólares. Sin recalibrar cada cinco minutos.</p>
+    <div class="hero-cta rv">
+      <a class="btn" href="#demo">Probar la demo en vivo</a>
+      <a class="btn-ghost" href="#tecnologia">Cómo se mantiene calibrado</a>
+    </div>
+    <div class="demo rv-soft" id="demo">
+      <h2>Demo en vivo: detén el cursor 1 segundo</h2>
+      <p class="hint">El anillo es tu mirada; el hold es tu click — igual que el hold de 0.4&nbsp;s con los ojos en el producto real. Si tu navegador tiene voz en español, la vas a escuchar.</p>
+      <div class="chips">
+        <button class="chip" data-say="Sí"><span class="fill"></span><span class="w">SÍ</span></button>
+        <button class="chip" data-say="No"><span class="fill"></span><span class="w">NO</span></button>
+        <button class="chip" data-say="Quiero agua, por favor"><span class="fill"></span><span class="w">AGUA</span></button>
+        <button class="chip" data-say="Gracias"><span class="fill"></span><span class="w">GRACIAS</span></button>
+      </div>
+      <p class="said" id="said" aria-live="polite"></p>
+    </div>
+  </div>
+</header>
+
+<div class="ticker" aria-hidden="true">
+  <span>Sí <b>&nbsp;·&nbsp;</b> No <b>&nbsp;·&nbsp;</b> Quiero agua, por favor <b>&nbsp;·&nbsp;</b> Necesito ir al baño <b>&nbsp;·&nbsp;</b> Necesito ayuda <b>&nbsp;·&nbsp;</b> Gracias <b>&nbsp;·&nbsp;</b> Por favor ven <b>&nbsp;·&nbsp;</b> Me duele <b>&nbsp;·&nbsp;</b> Sí <b>&nbsp;·&nbsp;</b> No <b>&nbsp;·&nbsp;</b> Quiero agua, por favor <b>&nbsp;·&nbsp;</b> Necesito ir al baño <b>&nbsp;·&nbsp;</b> Necesito ayuda <b>&nbsp;·&nbsp;</b> Gracias <b>&nbsp;·&nbsp;</b> Por favor ven <b>&nbsp;·&nbsp;</b> Me duele <b>&nbsp;·&nbsp;</b>&nbsp;</span>
+</div>
+
+<section class="block" id="problema">
+  <div class="wrap">
+    <div class="kicker rv">El problema</div>
+    <h2 class="title rv">El eye tracking barato funciona. Por cinco minutos.</h2>
+    <div class="cols">
+      <div class="rv">
+        <p>Los equipos clínicos de mirada — Tobii, PCEye — son precisos y cuestan <strong>miles de dólares</strong>. Las alternativas con webcam son gratis, pero <strong>se descalibran en minutos</strong>: te mueves un milímetro, cambia la luz, y el cursor ya no está donde miras.</p>
+        <p>Para quien depende de la mirada como único input — ELA, lesión medular, parálisis cerebral — recalibrar a cada rato no es una molestia: es perder la voz.</p>
+      </div>
+      <div class="stat-card rv-soft">
+        <div class="stat">~300<small> px</small></div>
+        <p class="stat-cap">de deriva típica en sesiones de webcam sin corrección. Nuestras celdas de ~450 px y la corrección en vivo existen para sobrevivir exactamente eso.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<figure class="art rv-soft">
+  <img src="hero.png" alt="Ilustración: un ojo de iris ámbar del que emanan ondas de sonido" fetchpriority="high">
+  <figcaption>La mirada, vuelta voz — arte generado con muse-image-1.0.</figcaption>
+</figure>
+
+<section class="block" id="como">
+  <div class="wrap">
+    <div class="kicker rv">Cómo funciona</div>
+    <h2 class="title rv">Tres gestos. Cero manos.</h2>
+    <div class="steps">
+      <div class="step rv">
+        <div class="n">01</div>
+        <div><h3>Mira</h3><p>Una webcam común y MediaPipe siguen tu iris a <code>~30 fps</code>, todo en tu máquina. Un resaltado ámbar muestra en vivo a dónde cree el sistema que miras.</p></div>
+      </div>
+      <div class="step rv">
+        <div class="n">02</div>
+        <div><h3>Sostén</h3><p>Cierra los ojos <code>0.4 s</code> sobre la palabra. No es un parpadeo — los naturales duran 0.1 s — es un hold deliberado con compuerta EAR calibrada a tus ojos. El cuidador también puede usar el mouse en cualquier momento.</p></div>
+      </div>
+      <div class="step rv">
+        <div class="n">03</div>
+        <div><h3>Habla</h3><p>La frase suena al instante con voz offline del sistema, en español o inglés. Y cada selección <strong>vuelve a calibrar el mapa</strong>: mientras más hablas, mejor te sigue.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block dark" id="tecnologia">
+  <div class="wrap">
+    <div class="kicker rv">Tecnología</div>
+    <h2 class="title rv">Recalibración semántica.</h2>
+    <div class="panel rv-soft">
+      <p>Dos ritmos, como la visión humana. Un <strong>loop local rápido</strong> (~30 fps) convierte landmarks en punto de pantalla. Un <strong>loop semántico lento</strong> propone anclas de alta certeza — la celda que acabas de elegir, el renglón que lees, el botón al que diste click — y corrige el mapa con regresión online acotada (≤25 px por update).</p>
+      <p><strong>Nunca un LLM por frame.</strong> Los modelos de Meta aportan etiquetas escasas; la matemática local hace la corrección. Estado honesto del prototipo: las anclas por selección ya corrigen en vivo, y el loop semántico con Spark + SAM corre en replay sobre sesiones grabadas.</p>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="voz">
+  <div class="wrap">
+    <div class="kicker rv">Accesibilidad</div>
+    <blockquote class="voice rv">&ldquo;Me levanté, me fui, regresé&hellip; y siguió calibrado.&rdquo;
+      <footer>— Leo, probando el tablero con ELA en mente, oct 2026</footer>
+    </blockquote>
+  </div>
+</section>
+
+<footer class="page">
+  <div class="wrap">
+    <svg viewBox="0 0 256 256" aria-hidden="true"><rect width="256" height="256" rx="58" fill="#221812"/><circle cx="128" cy="128" r="72" fill="none" stroke="#e8a33d" stroke-width="16"/><circle cx="152" cy="104" r="26" fill="#e8a33d"/></svg>
+    <span>Mirada — comunicación con la mirada. Prototipo para el Meta Global AI Developer Hackathon, nov 2026.</span>
+    <span class="right">Webcam, Python y voz sintética.</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll(".rv, .rv-soft").forEach(function (el) { io.observe(el); });
+
+  var fine = window.matchMedia("(pointer: fine)").matches;
+  var ring = document.getElementById("gaze-ring");
+  var dot = document.getElementById("gaze-dot");
+  var mx = -100, my = -100, rx = -100, ry = -100, seen = false;
+  if (fine && !reduce) {
+    document.addEventListener("mousemove", function (e) {
+      mx = e.clientX; my = e.clientY;
+      if (!seen) { seen = true; rx = mx; ry = my; ring.style.opacity = 1; dot.style.opacity = 1; }
+    });
+    document.addEventListener("mouseleave", function () {
+      seen = false; ring.style.opacity = 0; dot.style.opacity = 0;
+    });
+    (function loop() {
+      rx += (mx - rx) * 0.16; ry += (my - ry) * 0.16;
+      ring.style.transform = "translate(" + rx + "px," + ry + "px)";
+      dot.style.transform = "translate(" + mx + "px," + my + "px)";
+      requestAnimationFrame(loop);
+    })();
+  }
+
+  var said = document.getElementById("said");
+  var voice = null;
+  function pickVoice() {
+    try {
+      var vs = speechSynthesis.getVoices();
+      voice = vs.find(function (v) { return v.lang && v.lang.toLowerCase().indexOf("es") === 0; })
+        || vs.find(function (v) { return v.lang && v.lang.toLowerCase().indexOf("en") === 0; }) || null;
+    } catch (e) { voice = null; }
+  }
+  if ("speechSynthesis" in window) {
+    pickVoice();
+    speechSynthesis.onvoiceschanged = pickVoice;
+  }
+  function speak(text) {
+    said.textContent = "\u201C" + text + "\u201D";
+    try {
+      speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text);
+      if (voice) u.voice = voice;
+      u.rate = 1.02;
+      speechSynthesis.speak(u);
+    } catch (e) { /* text feedback is enough */ }
+  }
+  document.querySelectorAll(".chip").forEach(function (chip) {
+    var fill = chip.querySelector(".fill");
+    var t0 = 0, raf = 0, done = false;
+    function step(t) {
+      var p = Math.min(1, (t - t0) / 1000);
+      fill.style.width = (p * 100).toFixed(1) + "%";
+      if (p >= 1 && !done) {
+        done = true;
+        document.querySelectorAll(".chip").forEach(function (c) { c.classList.remove("spoke"); });
+        chip.classList.add("spoke");
+        speak(chip.getAttribute("data-say"));
+        return;
+      }
+      raf = requestAnimationFrame(step);
+    }
+    chip.addEventListener("mouseenter", function () {
+      if (reduce) { speak(chip.getAttribute("data-say")); return; }
+      done = false; t0 = performance.now();
+      raf = requestAnimationFrame(step);
+    });
+    chip.addEventListener("mouseleave", function () {
+      cancelAnimationFrame(raf);
+      fill.style.width = "0%";
+    });
+    chip.addEventListener("click", function () { speak(chip.getAttribute("data-say")); });
+  });
+})();
+</script>
+</body>
+</html>
