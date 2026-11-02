@@ -15,14 +15,25 @@ minutes without recalibrating, on a $0 webcam.
 
 ## Try the demo (Windows 11, PowerShell)
 
+Prerequisites: Windows 10/11, a webcam, and Python 3.11 or 3.12 from
+[python.org](https://www.python.org/downloads/) (check "Add python.exe to
+PATH" during install; the Microsoft Store Python lacks pip support for
+this workflow). No API key needed for the demo — the board runs fully
+offline. Keys are only required for the research tools below.
+
 ```powershell
 cd C:\path\to\mirada
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-.\.venv\Scripts\python.exe -m pip install mediapipe opencv-python pillow openai meta-sam-parser numpy pywebview
-Copy-Item .env.example .env   # put your Meta Model API key in MODEL_API_KEY
-.\.venv\Scripts\python.exe tools\t3_mediapipe_probe.py   # downloads the face model, checks camera
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe tools\t3_mediapipe_probe.py   # checks camera + face model
 ```
+
+Notes: the `.venv` folder is never shipped with the repo — every machine
+creates its own with the commands above. There is no need to run
+`Activate.ps1` (it also trips PowerShell execution policies); all
+commands call the environment's Python directly. The face model
+(`data/face_landmarker.task`) ships in the repo, nothing downloads at
+first run.
 
 Then pick your surface:
 
@@ -40,7 +51,9 @@ calibration dots including the head-turn prompts, then hold your gaze
 applications (two holds to confirm); a floating "← MIRADA" circle
 brings the board back. QUIT by gaze, or Shift+Q anywhere.
 
-For the science workflow:
+For the science workflow (needs keys: copy `.env.example` to `.env`
+and fill `MODEL_API_KEY`, plus `BASETEN_API_KEY` for the Baseten
+backend):
 
 ```powershell
 .\.venv\Scripts\python.exe tools\record_session.py --seconds 900 --camera 0 --monitor 1
@@ -106,6 +119,6 @@ For the science workflow:
 - [EVAL.md](docs/EVAL.md) — protocol fixed in advance, and the
   verdicts including the negative ones.
 - [DECISIONS.md](docs/DECISIONS.md) — every technical decision with
-  alternatives (D1–D18).
+  alternatives (D1–D22).
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md), [RESEARCH.md](docs/RESEARCH.md),
   [TASKS.md](docs/TASKS.md), [GUIA_VOLUNTARIO.md](docs/GUIA_VOLUNTARIO.md).

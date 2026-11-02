@@ -6,7 +6,8 @@ y una webcam común. No necesitas cuenta ni key de nada.
 ## Requisitos
 
 - Windows 10/11 con webcam (integrada o USB).
-- Python 3.11 o 3.12 instalado.
+- Python 3.11 o 3.12 instalado desde python.org (marca "Add python.exe
+  to PATH"; el Python de Microsoft Store no sirve para esto).
 - Estar frente a la pantalla a ~50–60 cm, con luz frontal (una lámpara
   o ventana frente a ti, no detrás).
 
@@ -15,11 +16,14 @@ y una webcam común. No necesitas cuenta ni key de nada.
 ```powershell
 cd <carpeta donde descomprimiste mirada>
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install mediapipe opencv-python numpy pynput
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe tools\t3_mediapipe_probe.py
 ```
 
-El último comando descarga el modelo de cara (~4 MB) y verifica tu cámara.
+La carpeta `.venv` no viene incluida: cada computadora crea la suya con
+esos comandos. No necesitas correr `Activate.ps1` ni "activar" nada:
+todos los comandos llaman directo al Python del proyecto. El modelo de
+cara ya viene en el repo; el último comando solo verifica tu cámara.
 
 ## Prueba 1 — tablero de comunicación (~5 min)
 
