@@ -56,7 +56,9 @@ and fill `MODEL_API_KEY`, plus `BASETEN_API_KEY` for the Baseten
 backend):
 
 ```powershell
-.\.venv\Scripts\python.exe tools\record_session.py --seconds 900 --camera 0 --monitor 1
+.\.venv\Scripts\python.exe tools\record_session.py --seconds 900
+# Camera and monitor are auto-detected (a chooser window appears if
+# several exist). Override only if needed: --camera 0 --monitor 1
 .\.venv\Scripts\python.exe tools\replay_v2.py data\sess-YYYYMMDD-HHMMSS
 .\.venv\Scripts\python.exe tools\t14_figure.py        # A/B/C/D figure + table
 .\.venv\Scripts\python.exe tools\t20_appearance.py    # appearance vs geometric, pooled

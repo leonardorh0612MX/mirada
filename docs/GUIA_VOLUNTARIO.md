@@ -49,8 +49,11 @@ cara ya viene en el repo; el último comando solo verifica tu cámara.
 .\.venv\Scripts\python.exe tools\record_session.py --seconds 900
 ```
 
-Calibra con ESPACIO en cada punto y luego estudia/trabaja normal 15 min.
-Cada 2 min aparece un punto: míralo fijo 10 segundos.
+No necesitas saber los números de tu cámara o monitor: si solo hay uno
+de cada uno se usan solos, y si hay varios aparece una ventana con vista
+en vivo para elegir con click. Calibra con ESPACIO en cada punto y luego
+estudia/trabaja normal 15 min. Cada 2 min aparece un punto: míralo fijo
+10 segundos.
 
 ## Qué devolver
 
