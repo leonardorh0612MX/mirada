@@ -6,4 +6,5 @@ numpy==2.5.4
 openai==3.39.0
 opencv-python==5.0.0.93
 pillow==13.0.0
+pynput==1.8.2
 pywebview==6.2.1
