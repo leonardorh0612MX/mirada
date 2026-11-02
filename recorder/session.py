@@ -7,10 +7,12 @@ kind. Readers assert non-decreasing t_mono so replay order is trustworthy.
 
 import json
 import os
+import threading
 import time
 
 MANIFEST_NAME = "manifest.json"
 EVENTS_NAME = "events.jsonl"
+_WRITE_LOCK = threading.Lock()
 
 
 def new_session(data_dir, name, meta=None):
@@ -29,14 +31,22 @@ def new_session(data_dir, name, meta=None):
 
 
 def append_event(session_path, kind, payload=None, t_mono=None):
-    """Append one event. Returns the stored record."""
-    record = {
-        "t_mono": time.monotonic() if t_mono is None else t_mono,
-        "kind": kind,
-        "payload": payload or {},
-    }
-    with open(os.path.join(session_path, EVENTS_NAME), "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record) + "\n")
+    """Append one event. Returns the stored record.
+
+    Thread-safe: record build and write happen under one lock. Without
+    it, a click-listener thread's small write interleaved inside the
+    capture loop's multi-KB landmark line and destroyed one record
+    (sess-20261101-130237, line 78 of 8536).
+    """
+    with _WRITE_LOCK:
+        record = {
+            "t_mono": time.monotonic() if t_mono is None else t_mono,
+            "kind": kind,
+            "payload": payload or {},
+        }
+        path = os.path.join(session_path, EVENTS_NAME)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
     return record
 
 

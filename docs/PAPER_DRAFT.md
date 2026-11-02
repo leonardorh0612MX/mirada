@@ -26,8 +26,8 @@ when the map is broken — while soft/forced updates yield a modest, honest
 −10 to −16%, and remain stable under up to 50% deliberately corrupted
 anchors (the ablation GazeAgent declares unverified); (3) a per-session
 appearance model (ridge over eye-crop pixels, enrolled in ~90 s, discarded
-at session end) beats the geometric map where enrollment data is sufficient
-(255 vs 384 px leave-one-dot-out) and typed our target word live in 36.3 s
+at session end) beats the geometric map in pooled leave-one-dot-out
+(237 vs 427 px, n=373 crops, −44%) and typed our target word live in 36.3 s
 with 0 errors, versus 33.2 s for the geometric map with exact anchors.
 A gaze communication board (8 cells, offline speech) runs end-to-end on a
 $0-webcam setup. We state limits plainly: one participant for anchor
@@ -154,8 +154,13 @@ Replacing the original fit (unscaled normal equations; coefficients to
 | sess-20261027-210940 | 1997 px | 555 px | −72% |
 | **Mean** | **1295 px** | **546 px** | **−58%** |
 
-[TODO Figure 1: per-dot error over time, strategies A/B/C/D, from
-`tools/replay_v2.py` output.]
+Figure 1 (`docs/fig_error_time.svg`, from `tools/t14_figure.py`):
+per-dot error over time, strategies A/B/C/D pooled over the two
+anchor-bearing sessions. Pooled means: A 490 px, B 490 px, C
+(batch4-Huber) 469 px, D 490 px; late window (>=600 s): A 759 vs
+C 717 px. The pre-registered consensus form of C applied zero anchors
+and is identical to A — reported as a failure of that design, with
+batch4-Huber as the labeled post-hoc revision (Sec. 4.2).
 
 ### 4.2 Anchors: gating traps, corruption does not kill
 
@@ -186,11 +191,13 @@ unverified; the answer is parameter-dependent, not a blanket yes/no.
 ### 4.3 Appearance map (T20)
 
 Ridge over grayscale eye-crop vectors vs the geometric map,
-leave-one-dot-out, pooled recorded crops: no clear win at n=35 pooled
-(384 vs 366 px) because early sessions contribute 4–7 crops and overfit
-(to 970 px). Where a session yields ≥19 crops, appearance wins clearly
-(sess-20261029-222607: 221 vs 382 px; sess-20261030-084907: 289 vs
-386 px); pooled sufficient-data regime 255 vs 384 px (−34%). Live
+leave-one-dot-out. Early pooling (n=35) showed no clear win (384 vs
+366 px) because the first sessions contribute 4–7 crops and overfit
+(to 970 px). With the full pool (n=373 dot-crops, Nov 1) appearance
+wins decisively: 237 vs 427 px (−44%). Per-session, where a session
+yields ≥19 crops it wins clearly (sess-20261029-222607: 221 vs 382 px;
+sess-20261030-084907: 289 vs 386 px; beta sessions with 57–114 crops:
+276/195/210 px vs 426/375/392 px). Live
 typing (target HOLA, ≤60 s, ≤2 errors = PASS): geometric 33.2 s
 (beta-20261028-164342); appearance 45.0 s (beta-20261030-092548) and
 36.3 s (beta-20261031-232738), 0 errors both. One appearance collapse
@@ -198,7 +205,20 @@ typing (target HOLA, ≤60 s, ≤2 errors = PASS): geometric 33.2 s
 as beta default Oct 31 (D13); a CNN is ruled out at our data scale
 (needs n≥200 per-person crops).
 
-### 4.4 Product surfaces
+### 4.4 Population residual: a negative result (T27)
+
+GazeAgent's architecture suggests a frozen population residual under a
+live affine stage. We trained a Gaussian-basis residual field over the
+7 geometric features on pooled dot residuals and evaluated strictly
+leave-one-session-out (10 sessions, 68 dots): pooled error moved
+785 → 780 px (−1%), 6/10 sessions improved. Same-day sessions all
+improve (−27…−223 px); earlier weeks worsen (+75…+218 px). The
+residual is a property of the day's posture/lighting regime, not of
+the person in general — so we do not ship a population prior, and the
+per-session enrollment plus online corrector stands as the design.
+Negative, but it closes the question with data instead of taste.
+
+### 4.5 Product surfaces
 
 - **Gaze keyboard** (T24): HOLA typed gaze-only as above.
 - **Communication board** (T33/D11): 8 huge cells (SÍ/NO/AGUA/BAÑO/
@@ -206,7 +226,10 @@ as beta default Oct 31 (D13); a CNN is ruled out at our data scale
   web front-end verified live (web-20261031-231736: 12 selections in
   67 s, resub 284 px, leave-and-return robust in Tk runs). Settings
   (voice ES/EN by culture prefix, editable phrases) persist locally.
-- **Desktop/Discord** (T29, stretch): built; live proof pending.
+- **Apps page** (T29 as re-scoped, D16): huge tiles launch real apps by
+  gaze (Discord opened natively, web-20261101-122657) with two-hold
+  confirmation and a floating gaze return button. Fine desktop pointing
+  (48 px taskbar icons) was measured out of our regime and cut.
 
 ## 5. Limitations, stated plainly
 

@@ -99,3 +99,59 @@ Format per decision: choice, alternatives, rationale, status. Status is Proposed
 - Evidence: offline LODO ruling Oct 30 (sufficient-data regime 255 vs 384 px, -34%); live typing wins beta-20261030-092548 (45.0 s, 0 errors) and beta-20261031-232738 (36.3 s, 0 errors, honest LODO resub 191 px). The beta-20261030-093037 collapse predates the honest-LODO gate and the enrollment EAR-gate fix.
 - Alternatives: keep linear default (rejected: loses where data is sufficient, and both post-fix live runs favor appearance); persist a cross-session model (rejected: per-session fit is the privacy and robustness story — a new user enrolls in ~90 s with no stored biometrics).
 - Status: Accepted. Board (board.py/board_web.py) still runs the linear map; porting appearance there is a separate, later decision.
+
+## D14. Demo hierarchy (Oct 31)
+
+- Choice: the headline demo is the web communication board (proven live, voice output, accessibility story in 10 seconds). Second act: the gaze keyboard typing free text (appearance map). Discord (T29) is a bonus closing clip only if it passes its live test beforehand — never the main demo.
+- Rationale: Discord rides the desktop cursor at 5-7 cm error with real-app injection unknowns; the board is verified end-to-end (web-20261031-231736) and the keyboard has two clean PASS runs. Judges get reliability first, ambition second, stretch last.
+- Status: Accepted.
+
+## D15. The board is also a native app window (Oct 31)
+
+- Choice: `app/board_app.py` hosts the unchanged web UI and engine in a native pywebview window (Edge WebView2 on Windows 11) with the app icon (`site/mirada.ico`). It starts windowed (title bar, draggable, minimizable); when the user picks a monitor it moves onto that monitor and goes fullscreen there — calibration is only pixel-true when the page covers exactly the chosen screen (first live run opened on the other monitor and calibration followed the window, not the choice). F11 toggles fullscreen (page key → `/action fullscreen` → window); on session end it returns to a closable window. `app/board_web.py` (browser) and `app/board.py` (Tk) remain as fallbacks. A full Qt/QML rewrite was rejected for the hackathon window: days of rework and re-verification to reproduce a UI that already passes live, for zero engine gain.
+- Rationale: the builder is right that quality design does not require a browser tab — but the design investment lives in the CSS/JS, and WebView2 renders exactly that inside a real application window. Packaging to .exe (PyInstaller) becomes possible later without touching the UI.
+- Status: Accepted. Builder Nov 1: window opens natively; icon generated (`site/mirada.ico`) and wrapper tests pass; the wrong-monitor report motivated the move-to-chosen-monitor fix, whose live re-check is pending.
+
+## D16. Apps open from gaze-sized tiles, not from the taskbar (Nov 1)
+
+- Choice: T29 re-scoped again. Selecting Discord from the Windows taskbar failed live (desk-20261101-114853: 48 px icons vs ~280 px gaze scatter — the regime Tobii owns, not ours). The board gains an APPS page instead: huge tiles (DISCORD, NAVEGADOR, YOUTUBE, WHATSAPP, CORREO, MAPAS; editable in data/board_config.json) that launch apps via app/apps.py and minimize the board window. FRASES returns to the phrase page. Typing inside Discord after launch remains out of the demo; the launch itself is the verifiable outcome.
+- Alternatives: keep desktop.py cursor for everything (rejected on live evidence); zoom-lens magnification for small targets (real work, unbudgeted before Nov 4); drop apps entirely (loses the "integrate my applications" story the builder asked for).
+- Status: Accepted. First live run web-20261101-122657: DISCORD opened natively, phrases fine — but CORREO/YOUTUBE also fired because the engine kept selecting while the user was inside the opened app. Fixes same day: (1) gaze firing pauses entirely while an app is launched; (2) app tiles need a second confirming hold within 5 s (mouse click stays one-shot); (3) tiles carry brand badges; (4) a frameless always-on-top 210 px "← MIRADA" circle floats top-right (over the display-only bar) — gaze-dwell 0.9 s or caregiver click restores the board fullscreen. Re-verified web-20261101-185048: WHATSAPP and DISCORD launched, "returned to board" twice, settings voice logged Sabina.
+
+## D17. Board enrollment becomes factorial (Nov 1)
+
+- Choice: the web board's calibration replaces its flat 4x4 grid x2 with the beta's factorial plan (app/board.py enrollment_plan: A 3x3 natural + B 5 dots x 5 instructed poses + E repeat = 43 median captures, on-screen pose instructions). Trigger: web-20261101-185048 felt badly calibrated at resub 269 px - the board enrolled only natural-posture points while the keyboard enrolls gaze x posture. The builder independently proposed the same design (fingerprint-style multi-position capture); his spacebar trigger was not adopted (single frames are noisy; median-of-fixation is strictly better) and grid density was kept moderate (posture variety, not point count, is the measured bottleneck).
+- Status: Accepted. Live check web-20261101-210049: single enrollment, natural resub 225 px. The weak-fit gate now judges natural blocks only (cross-pose resub ~305 px is legitimate and no longer re-enrolls).
+
+## D18. Board anchors move bias only (Nov 1)
+
+- Choice: on both board surfaces, certain (hold-confirmed) anchors update only the corrector's bias intercept - the head-coupled slope stays frozen, trust region tightens 25 -> 15 px, and residuals beyond 3 sigma are flagged instead of applied. Beta keeps full updates (its steering task measured well).
+- Evidence: web-20261101-210049 - user reported selections progressively DE-calibrated the board; log shows 6 applied anchors with residuals 145-347 px that never shrank. Mechanism: each certain update also re-fit the head-coupled slope at whatever head pose the selection happened in, re-tilting the plane for every neighbour.
+- Status: Accepted. Live check: residuals across selections should shrink or hold, never seesaw.
+
+## D19. The board grows a keyboard page with send-to-app (Nov 1)
+
+- Choice: TECLADO page in the board (Spanish QWERTY with Ñ, word suggestions, typed buffer in the bar) with VOLVER/DECIR/ENVIAR/QUIT. ENVIAR minimizes Mirada (the launched-pause machinery), waits 0.8 s, and injects text + {ENTER} into the focused window via the desktop demo's proven SendInput lane (app/inject.py). Text goes to whatever has focus - Discord's message box normally keeps focus; that caveat is stated, not hidden. DECIR speaks the buffer instead.
+- Alternatives: gaze-typing directly inside the external app via the desktop cursor (rejected on the desk-20261101 evidence: fine targets are out of our regime); clipboard paste (SendInput Unicode already handles accents and was live-tested).
+- Status: Accepted. Live check: type a short message, ENVIAR with Discord focused, confirm it lands; return via the floating circle.
+
+## D20. Eye-mouse inside opened apps (Nov 1)
+
+- Correction first: the builder's three "gaze returns" were mouse clicks - the dwell return never fired live and failed silently. The watcher now uses real elapsed time, prints dwell/restore diagnostics to the console, and reports window-call failures instead of swallowing them.
+- Choice: while an app is open, the yellow ring follows the gaze over the app (small always-on-top window moved by the watcher), a deliberate 0.4 s hold clicks at the gaze point via SendInput (except over the floating buttons), and the floating window now carries two gaze targets: MIRADA (back) and TECLADO (opens the keyboard page). ENVIAR (D19) delivers the text into the focused field. This is the desktop interaction the builder asked for, built from board-grade pieces instead of the discarded fine-cursor demo.
+- Status: Accepted. Live check: in Discord, gaze-click a channel, dwell TECLADO, type, ENVIAR, confirm the message; dwell MIRADA to return. Console must show the dwell lines.
+
+## D21. App-mode dwell-click + head-follow calibration (Nov 1)
+
+- Correction: the first D20 live run (web-20261101-230023) fired 11 clicks while the builder just looked around WhatsApp/Discord - blink-hold is the wrong gesture inside apps, where blinking is reading. Replaced with AppDwell: rest the gaze 0.9 s within 110 px to click, 1.5 s refractory. Blink stays only for board/keyboard cells.
+- Correction: SPACE and hold selections died on the bottom row - downgaze-open eyes (~0.24 EAR) straddle the 0.6 x open-median threshold. Factor 0.52 (board + web); shut stays far below (~0.07-0.11 measured).
+- Choice: calibration now instructs head-follow ("cabeza y ojos juntos"). The builder's best calibration ever came from pointing his head at the dots - natural gaze/posture covariation is the identifiability data the factorial design wants (§Q3), not noise to suppress. Block B keeps the explicit pose on top.
+- Polish: floating dock and ring cursor restyled as dark glass (the flat circles read as cheap placeholders).
+- Status: Accepted, pending live. 187 tests OK. Live check: open Discord, look around without intending clicks (expect zero `app click` lines), rest on a channel (expect one click), type via TECLADO with SPACE working.
+
+## D22. English default + in-app dwell that survives jitter (Nov 2)
+
+- Choice: the contest is judged in English, so the setup screen now opens with an EN/ES toggle (EN preselected, live preview) driving cells, funcs, default apps, phrases, TTS voice, enrollment cues and all chrome (new app/i18n.py + I18N dict in board.html, parity-checked both sides). Func dispatch matches stable ids, never display labels. Tk fallback takes --lang (default en). Settings can still switch the TTS voice mid-session, but never the session language.
+- Correction: the WebView2 ring painted a white square despite transparent=True, so the in-app cursor is now a Tk overlay (Win32 -transparentcolor + click-through): guaranteed chromeless on any runtime. The dock window gets the missing transparent=True flag plus letterspaced-cap typography. If the dock still shows white live, it goes Tk too.
+- Correction: resting on a target was near-impossible because the live point wanders - AppDwell now clicks on the rest centroid (running mean, radius 130 px), the engine smooths harder in app mode (alpha 0.15 vs 0.4), and the ring draws a white fill arc so the builder can see the charge and hold through it. Dwell 1.0 s, refractory 2.0 s.
+- Status: Accepted, pending live. 196 tests OK, page script node-checked. Live check: setup shows EN default; open YouTube, confirm zero-background ring with charging arc; rest on a video (one click at the centroid); switch to ES once and confirm full translation.

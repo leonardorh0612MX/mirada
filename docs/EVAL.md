@@ -94,6 +94,40 @@ Findings, honestly:
    transformation-matrix head-frame features probed and rejected
    (invariance not better than image features, worse on pitch-down).
 
+## T14 verdict (Nov 1): the pre-registered criteria, answered
+
+Figure: docs/fig_error_time.svg (tools/t14_figure.py). Two anchor-bearing
+sessions replayed identically (sess-20261027-210940: 29 C + 5 D anchors;
+sess-20261030-084907: 29 C + 3 D, 34 clicks). Pooled over 14 dots:
+
+| Strategy | Mean | Late (>=600 s) |
+|---|---|---|
+| A refit only | 490 px | 759 px |
+| B click anchors (gated) | 490 px | 759 px |
+| C Spark anchors, batch4-Huber | 469 px | 717 px |
+| D SAM anchors (consensus) | 490 px | 759 px |
+
+1. **Primary criterion (C beats A at minute 15): NO, as designed.** The
+   pre-registered C (consensus corrector) applied zero anchors on both
+   sessions; its series is identical to A. The gate trap of Oct 28 is
+   the result, not an excuse.
+2. **Revised discipline (post-hoc, labeled as such):** batch4-Huber C
+   gives -4% pooled mean and -6% late-window (per session -2% and -7%).
+   Modest and real; not a headline. B also never fired (gated corrector
+   rejected the session's click anchors), so B = A here.
+3. **Secondary (D beats C on anchor precision): NOT demonstrated** on
+   study sessions (D = A; SAM produced only 3-5 anchors). It holds only
+   in the controlled probe (D median 1 px vs C 4 px, tools/ui_precision).
+4. **Availability finding:** the four Nov 1 study sessions (fullscreen
+   video) have black screenshots and yielded 0-1 anchors total. The
+   semantic lane requires capturable screen content; video-study is its
+   blind spot, recorded plainly.
+
+Gate consequence, per the rule fixed in advance: the demo story is the
+honest version - fit identifiability (-58%) and appearance (-44%) carry
+the science; semantic anchors contribute a measured -4..-7% in free
+screens and exact, large corrections inside controlled apps.
+
 ## T28: update discipline and corruption ablation (Oct 28)
 
 Batch-of-4 one-step-ahead Huber-weighted full-RLS updates (GazeAgent-style
@@ -115,3 +149,32 @@ corruption. Batch4-Huber is a damped forced: +2% gain, flat under
 corruption. Conclusion: with sparse noisy anchors, soft/no gating beats
 hard gating; with exact anchors, consensus protects against poison (beta
 HOLA run: single accidental anchors never moved the map).
+
+## Factorial enrollment ablation (Nov 1)
+
+tools/factorial_ablation.py: fit on block A only (9 natural dots) vs
+A+B (34, with the 5-pose block), scored on block E (9 held-out repeats)
+across the 18 sessions whose logs carry a full factorial plan.
+Median held-out error: A-only 600 px, A+B 488 px (-19%); A+B wins
+14/18. One A-only fit collapses entirely (6068 px, beta-20261028-160434)
+where A+B stays at 555 px - the identifiability failure in miniature.
+Caveats: E is minutes later in the same session (not cross-day), and
+sessions with mid-session recalibration mix blocks; the median is
+robust to both. Conclusion: the gain comes from posture coverage, not
+point count - 43 points in one posture would plateau near 16.
+
+## T27: population residual field (Nov 1, LOSO)
+
+Gaussian-basis (kernel-ridge) residual field over the 7 geometric
+features, trained on other sessions' dot residuals, tested on a held-out
+session (tools/t27_residual.py; 10 sessions, 68 dots, sigma = median
+pairwise distance, lambda = 1.0, single pre-set configuration):
+
+Pooled LOSO: base 785 px -> corrected 780 px (-1%), 6/10 sessions
+improved. The four Nov 1 sessions all improve (-27 to -223 px); the
+Oct 27-30 sessions mostly worsen (+75 to +218 px). Reading: residual
+structure is specific to the day's posture/lighting regime, not a
+universal population prior - a frozen cross-day field does not transfer,
+which is evidence FOR per-session enrollment plus an online corrector
+rather than for a shipped population model. Verdict: do not adopt live;
+keep as a documented negative result (docs/PAPER_DRAFT.md Sec. 4.4).

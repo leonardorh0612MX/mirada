@@ -34,6 +34,10 @@ class _AxisRLS:
         self.P = [[(self.P[i][j] - k[i] * pphi[j]) / self.lam for j in range(2)]
                   for i in range(2)]
 
+    def update_intercept(self, h, target_offset, weight):
+        """Bias-only step: slope stays frozen at its current value."""
+        self.w[0] += weight * (target_offset - self.offset(h))
+
 
 class BiasCorrector:
     """Online correction restricted to bias + head-coupled drift (Q2/Q4).
@@ -47,9 +51,15 @@ class BiasCorrector:
 
     def __init__(self, base_predict, means, lam=0.995,
                  consensus_n=5, consensus_k=3, consensus_radius=75.0,
-                 sample_feats=None):
+                 sample_feats=None, certain_bias_only=False, trust_px=25.0):
         self.base_predict = base_predict
         self.means = means
+        # Board mode: certain anchors move ONLY the bias (slope frozen).
+        # Full slope updates let every selection re-tilt the head-coupled
+        # plane, so correct selections progressively warped neighbours
+        # (web-20261101-210049: 6 applied, residuals never shrank).
+        self.certain_bias_only = certain_bias_only
+        self.trust_px = trust_px
         # Appearance mode passes opaque samples (crop vec, feats): head
         # channels still come from the 7-feature half. Default keeps the
         # sample itself as features (linear mode, unchanged behavior).
@@ -82,19 +92,23 @@ class BiasCorrector:
         mad = sorted(abs(r - med) for r in rs)[len(rs) // 2]
         return max(120.0, 1.4826 * mad)
 
-    def _apply(self, feats, anch, r):
+    def _apply(self, feats, anch, r, bias_only=False):
         w = 1.0 / (1.0 + (r / 150.0) ** 2)
         hx, hy = self._head_of(feats)
         before = (self.ax.offset(hx), self.ay.offset(hy))
         pbx, pby = self.base_predict(feats)
-        self.ax.update(hx, anch[0] - pbx, w)
-        self.ay.update(hy, anch[1] - pby, w)
+        if bias_only:
+            self.ax.update_intercept(hx, anch[0] - pbx, w)
+            self.ay.update_intercept(hy, anch[1] - pby, w)
+        else:
+            self.ax.update(hx, anch[0] - pbx, w)
+            self.ay.update(hy, anch[1] - pby, w)
         after = (self.ax.offset(hx), self.ay.offset(hy))
         shift = ((after[0] - before[0]) ** 2 + (after[1] - before[1]) ** 2) ** 0.5
-        if shift > 25.0:  # trust region: rescale the step back
-            f = 25.0 / shift
+        if shift > self.trust_px:  # trust region: rescale the step back
+            f = self.trust_px / shift
             self._rescale(before, after, f, hx, hy)
-        return w, min(shift, 25.0)
+        return w, min(shift, self.trust_px)
 
     def update(self, features, anchor, certain=False):
         """Propose an anchor. Returns (state, info).
@@ -114,7 +128,12 @@ class BiasCorrector:
         r = (bias[0] ** 2 + bias[1] ** 2) ** 0.5
         self._residuals.append(r)
         if certain:
-            w, shift = self._apply(features, anchor, r)
+            if self.certain_bias_only and r > 3.0 * self._sigma():
+                # Warp-scale residual: bias cannot fix this; flag it for
+                # recalibration instead of chasing it across the screen.
+                return "flagged", {"residual": r, "certain": True}
+            w, shift = self._apply(features, anchor, r,
+                                   bias_only=self.certain_bias_only)
             return "applied", {"residual": r, "weight": w, "shift": shift,
                                "certain": True}
         flagged = r > 3.0 * self._sigma()

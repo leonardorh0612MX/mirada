@@ -1,23 +1,27 @@
-"""Spanish word completion for the gaze keyboard. Stdlib only.
+"""Word completion for the gaze keyboard. Stdlib only.
 
 Ranking comes from a frequency-ordered wordlist. The real list is provided
-by the `wordfreq` package (top Spanish lemmas, installed separately); tests
-and the no-network fallback use caller-supplied lists only.
+by the `wordfreq` package (installed separately); tests and the no-network
+fallback use caller-supplied lists only.
 """
 
 FALLBACK_WORDS = ["hola", "que", "de", "la", "el", "en", "gracias", "si",
                   "no", "por", "favor", "como", "estas", "bien", "voy"]
+FALLBACK_WORDS_EN = ["hello", "the", "and", "you", "please", "thank",
+                     "thanks", "yes", "no", "water", "help", "need",
+                     "want", "good", "here"]
 
 
-def load_words(n=5000):
-    """Frequency-ordered Spanish words. wordfreq if present, else fallback."""
+def load_words(n=5000, lang="en"):
+    """Frequency-ordered words. wordfreq if present, else fallback."""
+    fallback = FALLBACK_WORDS_EN if lang != "es" else FALLBACK_WORDS
     try:
         from wordfreq import top_n_list
 
-        words = top_n_list("es", n)
-        return words if words else list(FALLBACK_WORDS)
+        words = top_n_list("es" if lang == "es" else "en", n)
+        return words if words else list(fallback)
     except Exception:
-        return list(FALLBACK_WORDS)
+        return list(fallback)
 
 
 def current_prefix(text):

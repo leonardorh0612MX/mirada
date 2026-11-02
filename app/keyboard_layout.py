@@ -45,3 +45,49 @@ def hit_key(keys, x, y):
         if x1 <= x <= x2 and y1 <= y <= y2:
             return k["label"]
     return None
+
+
+ROWS_ES = ["QWERTYUIOP", "ASDFGHJKLÑ", "ZXCVBNM"]
+
+
+def board_keyboard(w, y0, h, margin=16, gap=10):
+    """Spanish gaze keyboard for the board's phrase band. Pure.
+
+    Three letter rows (with Ñ) plus a SPACE/DELETE row, all inside
+    (0, y0, w, y0+h). Keys stay ~170 px wide at 1920: the regime our
+    accuracy owns. Suggestion words are placed by the caller above.
+    """
+    keys = []
+    row_h = h / 4.0
+    y = float(y0)
+    for row in ROWS_ES:
+        n = len(row)
+        unit = (w - 2 * margin - gap * (n - 1)) / n
+        x = float(margin)
+        for ch in row:
+            keys.append({"label": ch,
+                         "rect": (x, y, x + unit, y + row_h - gap)})
+            x += unit + gap
+        y += row_h
+    unit = (w - 2 * margin - gap) / 3.0
+    keys.append({"label": "SPACE",
+                 "rect": (margin, y, margin + 2 * unit, y + row_h - gap)})
+    keys.append({"label": "DELETE",
+                 "rect": (margin + 2 * unit + gap, y, w - margin,
+                          y + row_h - gap)})
+    return keys
+
+
+def type_text(typed, label):
+    """One board-key press on the typed buffer. Pure.
+
+    Letters append lowercase (suggestions carry their own casing via
+    app.words.apply_suggestion, handled by the caller).
+    """
+    if label == "SPACE":
+        return typed + " "
+    if label == "DELETE":
+        return typed[:-1]
+    if len(label) == 1:
+        return typed + label.lower()
+    return typed

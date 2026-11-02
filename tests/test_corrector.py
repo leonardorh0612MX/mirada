@@ -118,6 +118,27 @@ class TestBiasCertain(unittest.TestCase):
         _, info = c.update([0.0] * 7, (5000.0, 100.0), certain=True)
         self.assertLessEqual(info["shift"], 25.0)
 
+    def test_bias_only_freezes_slope(self):
+        # web-20261101-210049 regression: full slope updates re-tilted
+        # the plane per selection and neighbours warped progressively.
+        c = BiasCorrector(lambda f: (100.0, 100.0), [0.0] * 7,
+                          certain_bias_only=True, trust_px=15.0)
+        feats = [0.0] * 7
+        feats[4], feats[5] = 0.08, -0.05  # off-centre head at selection
+        for anch in [(400.0, 100.0), (100.0, 400.0), (300.0, 300.0)]:
+            stt, info = c.update(feats, anch, certain=True)
+            self.assertEqual(stt, "applied")
+            self.assertLessEqual(info["shift"], 15.0)
+        self.assertEqual(c.ax.w[1], 0.0)
+        self.assertEqual(c.ay.w[1], 0.0)
+
+    def test_bias_only_flags_warp_residual(self):
+        c = BiasCorrector(lambda f: (100.0, 100.0), [0.0] * 7,
+                          certain_bias_only=True)
+        stt, _ = c.update([0.0] * 7, (5000.0, 100.0), certain=True)
+        self.assertEqual(stt, "flagged")
+        self.assertEqual(c.predict([0.0] * 7), (100.0, 100.0))
+
     def test_uncertain_waits_without_consensus(self):
         # Scattered biases across targets: the regional-error case that
         # left board 20261029-163748 with zero applied anchors.

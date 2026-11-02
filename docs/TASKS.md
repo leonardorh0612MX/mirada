@@ -35,13 +35,18 @@ Rule: if a task produces a number, it does not need Wonder. If it produces a dec
 
 - [x] T9 `[Wonder design, Spark code]` Implementer (done Oct 27: RLS matches batch LS, 3 gates, jump adaptation, 31/31 green): `corrector/` affine RLS with confidence, residual, and age gating. Done when: synthetic-drift replay recovers better than no correction.
 - [x] T10 `[Spark]` Implementer (done Oct 27: ledger with verdicts and precision metric, tested): `anchors/` app-event anchors (caret, dwell/click) with ledger. Done when: anchor precision is computable from a recorded session.
-- [ ] T11 `[Spark]` Implementer (code done Oct 27 in anchors/spark.py, done Oct 27, live JSON triple plus missing-key fallback tested): Spark proposals behind the degradation ladder. Done when: killing the API key falls back to app-event anchors without crashing.
+- [x] T11 `[Spark]` Implementer (done Oct 27 in anchors/spark.py, live JSON triple plus missing-key fallback tested): Spark proposals behind the degradation ladder. Done when: killing the API key falls back to app-event anchors without crashing.
 - [x] T12 `[Spark code, SAM under test]` Implementer (done Oct 27: live mask decoded, 559 px, centroid matches box to <1 px): SAM localization for Spark proposals. Done when: D anchors exist in the ledger with mask-derived points, or a measured latency result moves SAM to replay-only with a DECISIONS.md update.
 
 ## Nov 1: benchmark gate
 
 - [ ] T13 `[Local]` Evaluator (tooling done Oct 27: tools/record_session.py guided calibration plus dots; runs pending): record volunteer sessions per EVAL.md. Done when: at least 3 participants including the builder have complete sessions.
-- [ ] T14 `[Local replay, Wonder synthesis]` Evaluator (harness plus dependency-free SVG report done Oct 27, C beats A on synthetic; real sessions pending): replay A/B/C/D, produce figure and table. Done when: EVAL.md success criteria are answered yes or no, in writing.
+- [x] T14 `[Local replay, Wonder synthesis]` Evaluator (done Nov 1:
+  docs/fig_error_time.svg + verdict in EVAL.md - primary criterion NO
+  as designed (consensus applies zero anchors), batch4 revision -4..-6%,
+  D not demonstrated on study sessions, black-frame availability
+  finding): replay A/B/C/D, produce figure and table. Done when: EVAL.md
+  success criteria are answered yes or no, in writing.
 - Gate: if C does not beat A, the demo story becomes the honest negative result plus the best-performing strategy. No new features after this gate.
 
 ## Nov 2: harden the demo
@@ -52,11 +57,16 @@ Rule: if a task produces a number, it does not need Wonder. If it produces a dec
 ## Nov 3: ship the story
 
 - [ ] T17 `[Local + Wonder script review]` Builder: demo video, 15+ min session compressed to the required format, headline number from T14. Done when: video shows raw drift versus corrected gaze without recalibration.
-- [x] T18 `[Spark draft, Wonder final pass]` Builder (draft done Oct 27; eval summary and video link pending T13/T17): README with setup in PowerShell, honest limitations, and eval summary. Done when: a fresh reader can run the baseline from the README alone.
+- [x] T18 `[Spark draft, Wonder final pass]` Builder (final pass Nov 1:
+  README rewritten - demo-first commands (board_app/beta), measured
+  results with the T14/T20/T27 numbers, honest limitations; video link
+  to be appended after T17): README with setup in PowerShell, honest
+  limitations, and eval summary. Done when: a fresh reader can run the
+  baseline from the README alone.
 
 ## Post-benchmark option
 
-- [ ] T20 `[Modal/Baseten]` Conditional: evaluate a pretrained appearance-based gaze model (Modal GPU) against the linear feature model on the same recorded dataset (eye crops). Done when: error comparison in writing. Adopt as `gaze/` engine only if it wins clearly. Skipped if the linear map meets target.
+- [x] T20 `[Modal/Baseten]` (closed Oct 31 via the flagship below: per-session ridge instead of a pretrained model; adopted D13) Conditional: evaluate a pretrained appearance-based gaze model (Modal GPU) against the linear feature model on the same recorded dataset (eye crops). Done when: error comparison in writing. Adopt as `gaze/` engine only if it wins clearly. Skipped if the linear map meets target.
 - [ ] T21 `[Wonder]` LLM-as-calibrator: feed Spark a session digest (calib fit, face-size drift, clicks, key screenshots) and ask for a bias-correction vector with confidence. Evaluate in replay against dots. Done when: correction error beats raw strategy A on one real session, or the negative result is recorded.
 - [x] T22 `[Local + Spark/SAM under test]` (done Oct 27: C median 56 px dots, C 4 px UI, D 1 px): Anchor-precision probe: fixate N known on-screen targets, screenshot each, run Spark/SAM, score distance to known positions. Done when: anchor precision distribution in writing, independent of gaze.
 
@@ -71,7 +81,9 @@ Rule: if a task produces a number, it does not need Wonder. If it produces a dec
 
 ## Stretch week Oct 29 - Nov 4 (7 days, ~$280 credits; beta passed Oct 28)
 
-- [ ] T20 `[Modal/Baseten, flagship]` Appearance model from recorded eye crops.
+- [x] T20 `[Modal/Baseten, flagship]` (closed Oct 31, D13; pooled update
+  Nov 1: LODO baseline=427px appearance=237px, n=373 dot-crops, -44%)
+  Appearance model from recorded eye crops.
   Phase 1 done Oct 28, negative: ridge on 24x16 L+R crops vs linear feature
   map, leave-one-dot-out per session - pooled 578px vs 348px baseline (n=16
   dot-crops; only 3 sessions have any labeled crops, calib had no crops).
@@ -93,22 +105,31 @@ Rule: if a task produces a number, it does not need Wonder. If it produces a dec
   beta --map default is now appearance, linear kept as fallback.
   T20 closed for the hackathon; more sessions still improve the
   pooled offline numbers but no longer gate anything.
-- [ ] T27 `[Spark implement, Wonder review]` Fixed population residual:
-  learn a small Gaussian-basis residual field offline from the pooled
-  recorded sessions, freeze it, keep only the affine part adapting live
-  (GazeAgent's architecture, adapted to webcam). Done when: replay shows
-  error vs plain affine on the same sessions, in writing.
+- [x] T27 `[Spark implement, Wonder review]` (done Nov 1, NEGATIVE:
+  pooled LOSO 785->780px, -1%, 6/10 sessions improved; same-day sessions
+  all improve, cross-day worsens - residual is regime-specific, not a
+  population prior. Not adopted live; documented in EVAL.md + paper
+  Sec. 4.5) Fixed population residual: learn a small Gaussian-basis
+  residual field offline from the pooled recorded sessions, freeze it,
+  keep only the affine part adapting live (GazeAgent's architecture,
+  adapted to webcam). Done when: replay shows error vs plain affine on
+  the same sessions, in writing.
 - [x] T28 `[Spark]` (done Oct 28: batch-of-4 one-step-ahead Huber-weighted
   full-RLS plus seeded corruption ablation at 0/10/25/50% in
   tools/replay_v2.py; RLSFilter/Corrector accept sample_weight, tested).
   Result: forced full-RLS -10% at rho=0, -7% at rho=0.5; gated and consensus
   never fire on noisy semantic anchors; batch4-Huber stable +2%. Table in
   docs/EVAL.md. This is the experiment GazeAgent declares unverified.
-- [ ] T13b `[builder]` 2-3 new 15-min study sessions (volunteers preferred;
-  builder as fallback) with the current recorder (shots now saved): feed
-  the anchor-rescue curve at n>1. Done when: sessions have 7 dots, shots,
-  and anchors.
-- [ ] T29 `[Spark]` Gaze desktop demo: open Discord and send a message
+- [x] T13b `[builder]` (done Nov 1: four builder sessions
+  sess-20261101-130237/133704/135659/141439, 7 dots each, shots saved;
+  offline anchors via gen_anchors still to run on them) 2-3 new 15-min
+  study sessions (volunteers preferred; builder as fallback) with the
+  current recorder (shots now saved): feed the anchor-rescue curve at
+  n>1. Done when: sessions have 7 dots, shots, and anchors.
+- [ ] T29 `[Spark]` (re-scoped Nov 1, D16: taskbar selection failed live;
+  APPS page with huge launching tiles verified instead — DISCORD opened
+  natively web-20261101-122657. Typing inside Discord: cut from demo.)
+  Gaze desktop demo: open Discord and send a message
   gaze-only (STRETCH after the board, re-scoped Oct 28: Tobii owns
   precision pointing; our accuracy regime owns huge-target boards). Built
   Oct 28 in app/desktop.py (transparent cursor overlay, two-stage

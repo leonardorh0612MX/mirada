@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.camselect import resolve_camera, resolve_monitor  # noqa: E402
 from app.deskkeys import grid_keys, place  # noqa: E402
+from app.i18n import cells_for_lang, norm_lang, s  # noqa: E402
 from app.inject import shift_q_pressed  # noqa: E402
 from app.board_config import load_config, save_config  # noqa: E402
 from app.keyboard_layout import hit_key  # noqa: E402
@@ -41,13 +42,9 @@ from tools.record_session import (  # noqa: E402
     set_dpi_aware,
 )
 
-CELLS = [("SI", "Sí"), ("NO", "No"),
-         ("AGUA", "Quiero agua, por favor"),
-         ("BAÑO", "Necesito ir al baño"),
-         ("AYUDA", "Necesito ayuda, por favor ven"),
-         ("GRACIAS", "Gracias"),
-         ("LLAMAR", "Por favor ven, te necesito"),
-         ("DOLOR", "Me duele, por favor ayúdame")]
+# Module default is English (contest language); main() re-points both at
+# the --lang tables. Kept as names because the Tk loop reads them live.
+CELLS = cells_for_lang("en")
 PHRASE = dict(CELLS)
 
 
@@ -92,6 +89,43 @@ def head_view(lms, mw, mh, img_w=1280.0, img_h=720.0, ref=None):
     return ex, ey, rx, rx * 1.3, pose_inside(fx, fy, fw, ref)
 
 
+def enrollment_plan(lang="en"):
+    """Factorial gaze x posture enrollment dots: (fx, fy, instruction).
+
+    The builder's fingerprint idea, kept honest: what identifies the map
+    is not grid density but independent gaze/posture variation (the
+    identifiability fix). Blocks: A 3x3 natural, B 5 dots x 5 poses,
+    E = A repeated as drift check. 43 captures, median-aggregated by the
+    caller (never single-frame). Pure (tested).
+    """
+    # Head-follow instruction (web-20261101-230023): the builder got his
+    # best calibration ever by pointing his head at the dots instead of
+    # holding it fixed - natural gaze/posture covariation is data, not
+    # noise. Block A/E say so; block B keeps the explicit pose on top.
+    lang = norm_lang(lang)
+    natural = s(lang, "enroll_natural")
+    a = [(fx, fy, natural)
+         for fy in (0.12, 0.5, 0.88) for fx in (0.12, 0.5, 0.88)]
+    poses = [s(lang, "pose_center"), s(lang, "pose_left"),
+             s(lang, "pose_right"), s(lang, "pose_up"),
+             s(lang, "pose_down")]
+    bdots = [(0.5, 0.5), (0.12, 0.12), (0.88, 0.12), (0.12, 0.88),
+             (0.88, 0.88)]
+    suffix = s(lang, "enroll_suffix")
+    b = [(fx, fy, pose + " " + suffix)
+         for pose in poses for fx, fy in bdots]
+    return a + b + a
+
+
+def natural_block_indices(total):
+    """Indices of the natural-posture samples (blocks A + E) in a plan
+    of `total` captures. Quality gates judge these: cross-pose resub is
+    legitimately higher and must not trigger re-enrollment. Pure."""
+    if total < 18:
+        return list(range(total))
+    return list(range(9)) + list(range(total - 9, total))
+
+
 def strip_layout(mw, mh):
     """Board geometry: thin display bar on top, function row at bottom.
 
@@ -120,7 +154,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--monitor", type=int, default=None)
     ap.add_argument("--camera", type=int, default=None)
+    ap.add_argument("--lang", default="en")
     args = ap.parse_args()
+    lang = norm_lang(args.lang)
+    lang_cells = cells_for_lang(lang)
+    PHRASE.clear()
+    PHRASE.update(dict(lang_cells))
     set_dpi_aware()
     monitors = list_monitors()
     print(f"monitors: {monitors}")
@@ -222,11 +261,11 @@ def main():
                 samples.append(ratios(lms))
             try:
                 canvas.delete("all")
-                canvas.create_text(mw // 2, 90, text="PASO 1 · TU ROSTRO",
+                canvas.create_text(mw // 2, 90, text=s(lang, "tk_step1"),
                                    fill=CARAMEL, font=("Arial", 16, "bold"))
                 canvas.create_text(
                     mw // 2, mh - 60,
-                    text="ponte cómodo · así como te sientas siempre",
+                    text=s(lang, "tk_step1_sub"),
                     fill=COFFEE, font=("Arial", 22))
                 root.update()
             except Exception:
@@ -238,20 +277,20 @@ def main():
             now = time.perf_counter()
             try:
                 canvas.delete("all")
-                canvas.create_text(mw // 2, 90, text="PASO 1 · TU ROSTRO",
+                canvas.create_text(mw // 2, 90, text=s(lang, "tk_step1"),
                                    fill=CARAMEL, font=("Arial", 16, "bold"))
                 cx, cy, rx, ry = mw // 2, mh // 2, 200, 265
                 canvas.create_oval(cx - rx, cy - ry, cx + rx, cy + ry,
                                    outline=CARAMEL, width=3)
-                msg = "busca tu rostro…"
+                msg = s(lang, "guide_search")
                 if lms is not None:
                     ex, ey, erx, ery, inside = head_view(lms, mw, mh, ref=ref)
                     col = GREEN if inside else CARAMEL
                     canvas.create_oval(ex - erx, ey - ery, ex + erx, ey + ery,
                                        outline=col, width=5)
                     stable = stable + (now - last) if inside else 0.0
-                    msg = ("esa es tu postura · empezamos…"
-                           if inside else "vuelve a tu postura cómoda")
+                    msg = (s(lang, "guide_ok")
+                           if inside else s(lang, "guide_fix"))
                 else:
                     stable = 0.0
                 last = now
@@ -274,7 +313,7 @@ def main():
             canvas.create_rectangle(x0, 44, x0 + fw, 52, fill=GREEN,
                                     outline="")
         canvas.create_text(mw // 2, 88,
-                           text=f"CALIBRACIÓN · {done_n}/{total}",
+                           text=s(lang, "tk_calib", done_n, total),
                            fill=CARAMEL, font=("Arial", 15, "bold"))
         dx, dy = gx - mleft, gy - mtop
         if captured:
@@ -282,14 +321,14 @@ def main():
                                fill=GREEN, outline="")
             canvas.create_text(dx, dy, text="✓", fill="#ffffff",
                                font=("Arial", 30, "bold"))
-            label = "punto guardado"
+            label = s(lang, "tk_saved")
         else:
             r = 34 + int(5 * math.sin((time.perf_counter() - t0_dot) * 3))
             canvas.create_oval(dx - r - 12, dy - r - 12, dx + r + 12,
                                dy + r + 12, outline=GREEN_SOFT, width=3)
             canvas.create_oval(dx - r, dy - r, dx + r, dy + r,
                                fill=GREEN, outline="")
-            label = "mira el punto verde · rostro quieto"
+            label = s(lang, "tk_dot")
         canvas.create_text(mw // 2, mh - 60, text=label,
                            fill=GREEN if captured else COFFEE,
                            font=("Arial", 20))
@@ -355,7 +394,9 @@ def main():
             print("initial fit weak - hold still, enrolling again...")
             refit_all()
             return
-        corrector[0] = BiasCorrector(lambda f: map_to_screen(f, matrix), means)
+        corrector[0] = BiasCorrector(lambda f: map_to_screen(f, matrix),
+                                     means, certain_bias_only=True,
+                                     trust_px=15.0)
         hull[0] = convex_hull([(gx, gy) for _, gx, gy in samples])
         ear_open.sort()
         med = ear_open[len(ear_open) // 2] if ear_open else 0.30
@@ -363,7 +404,9 @@ def main():
         # closures at 0.4-1.0 s (three 0.4-0.5 s attempts were eaten by the
         # 0.5 s line, one missed by 10 ms) while true naturals stay <=0.2 s.
         # Huge cells keep false selections cheap.
-        blink[0] = LongBlink(ear_threshold=min(0.25, max(0.12, med * 0.6)),
+        # Factor 0.52 (was 0.6): downgaze-open eyes (~0.24 EAR) straddle
+        # the old threshold, so SPACE/hold selections silently fail.
+        blink[0] = LongBlink(ear_threshold=min(0.25, max(0.12, med * 0.52)),
                              hold_s=0.4)
         ear_gate[0] = blink[0].ear_threshold
         print(f"EAR: open_median={med:.3f} threshold={blink[0].ear_threshold:.3f}")
@@ -371,15 +414,16 @@ def main():
     refit_all()
 
     _py0, _py1 = phrase_area(mh)
-    cells = grid_keys([c[0] for c in CELLS], 2, 4, 16, _py0, mw - 32,
+    cells = grid_keys([c[0] for c in lang_cells], 2, 4, 16, _py0, mw - 32,
                       _py1 - _py0)
     # Function buttons are full cells in the bottom row, inside the
     # enrollment band (a thin top strip was unreachable: board-180002).
     funcs, bar_rect = strip_layout(mw, mh)
     cfg_path = os.path.join(repo, "data", "board_config.json")
-    cfg = load_config(cfg_path, [c[0] for c in CELLS])
+    cfg = load_config(cfg_path, [c[0] for c in lang_cells], lang)
     PHRASE.update(cfg["phrases"])
-    set_language(cfg["voice_lang"])
+    set_language(lang)
+    cfg["voice_lang"] = lang
     state["started"] = time.perf_counter()
     state["sentence"] = []
 
@@ -475,11 +519,11 @@ def main():
             except Exception:
                 settings_win[0] = None
         win = tk.Toplevel(root)
-        win.title("Mirada · Ajustes")
+        win.title(s(lang, "settings_title"))
         win.geometry(f"560x600+{mleft + mw // 2 - 280}+{mtop + mh // 2 - 300}")
         win.configure(bg="#141210")
         settings_win[0] = win
-        tk.Label(win, text="Voz", font=("Arial", 14, "bold"),
+        tk.Label(win, text=s(lang, "tk_voice"), font=("Arial", 14, "bold"),
                  bg="#141210", fg="#f2ede4").pack(pady=(14, 4))
         lang = tk.StringVar(value=cfg["voice_lang"])
         row = tk.Frame(win, bg="#141210")
@@ -490,10 +534,10 @@ def main():
                            selectcolor="#221c15",
                            activebackground="#141210",
                            activeforeground="#f2ede4").pack(side="left", padx=12)
-        tk.Label(win, text="Frases por celda", font=("Arial", 14, "bold"),
+        tk.Label(win, text=s(lang, "tk_phrases"), font=("Arial", 14, "bold"),
                  bg="#141210", fg="#f2ede4").pack(pady=(14, 4))
         entries = {}
-        for label, _default in CELLS:
+        for label, _default in lang_cells:
             fr = tk.Frame(win, bg="#141210")
             fr.pack(fill="x", padx=20, pady=2)
             tk.Label(fr, text=label, font=("Arial", 12), width=9,
@@ -508,7 +552,7 @@ def main():
             phrases = {label: var.get().strip() for label, var in entries.items()
                        if var.get().strip()}
             try:
-                save_config(cfg_path, lang.get(), phrases)
+                save_config(cfg_path, lang.get(), phrases, cfg["apps"])
             except Exception as e:
                 print(f"settings save failed: {e}")
                 return
@@ -523,10 +567,10 @@ def main():
 
         btns = tk.Frame(win, bg="#141210")
         btns.pack(pady=16)
-        tk.Button(btns, text="Guardar", font=("Arial", 13, "bold"),
+        tk.Button(btns, text=s(lang, "tk_save"), font=("Arial", 13, "bold"),
                   bg="#e8a33d", fg="#141210", width=12,
                   command=save_close).pack(side="left", padx=8)
-        tk.Button(btns, text="Cerrar", font=("Arial", 13),
+        tk.Button(btns, text=s(lang, "tk_close"), font=("Arial", 13),
                   bg="#221c15", fg="#f2ede4", width=12,
                   command=lambda: (settings_win.__setitem__(0, None),
                                    win.destroy())).pack(side="left", padx=8)
@@ -571,13 +615,13 @@ def main():
         if state.get("face_msg"):
             left, lfill = state["face_msg"], "#ff8a65"
         elif not covered:
-            left, lfill = "gaze outside trusted area", "#ff8a65"
+            left, lfill = s(lang, "bar_outside"), "#ff8a65"
         else:
             left = "  ·  ".join(state["sentence"])
             if len(left) > 60:
                 left = "…" + left[-59:]
             lfill = "#9ccc65" if left else "#757575"
-            left = left or "mira + hold para hablar…"
+            left = left or s(lang, "bar_hint")
         canvas.create_text(x1 + 14, mid, text=left, fill=lfill,
                            font=("Arial", 20), anchor="w")
         if blink[0].holding():
@@ -613,10 +657,10 @@ def main():
             cx = (lms[454][0] + lms[234][0]) / 2.0
             frontal = fw > 0 and abs(lms[1][0] - cx) / fw < 0.35
             if not frontal:
-                face_msg = "face the screen"
+                face_msg = s(lang, "face_turn")
                 feats, ear = None, None
         elif ear is None:
-            face_msg = "NO FACE - come back to the camera"
+            face_msg = s(lang, "face_gone")
         state["face_msg"] = face_msg
         select_event = blink[0].update(ear, now) == "select"
         ear_stream.append((round(now - state["started"], 3),

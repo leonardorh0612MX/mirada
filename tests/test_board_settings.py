@@ -87,7 +87,31 @@ class TestBoardConfig(unittest.TestCase):
 
     def test_missing_file_defaults(self):
         cfg = load_config(os.path.join("nope", "missing.json"), LABELS)
-        self.assertEqual(cfg, {"voice_lang": "es", "phrases": {}})
+        self.assertEqual(cfg["voice_lang"], "en")
+        self.assertEqual(cfg["phrases"], {})
+        self.assertEqual([a["label"] for a in cfg["apps"]],
+                         ["DISCORD", "BROWSER", "YOUTUBE", "WHATSAPP",
+                          "MAIL", "MAPS"])
+
+    def test_missing_file_spanish_apps(self):
+        cfg = load_config(os.path.join("nope", "missing.json"), LABELS,
+                          "es")
+        self.assertEqual(cfg["voice_lang"], "en")
+        self.assertEqual([a["label"] for a in cfg["apps"]],
+                         ["DISCORD", "NAVEGADOR", "YOUTUBE", "WHATSAPP",
+                          "CORREO", "MAPAS"])
+
+    def test_apps_roundtrip_and_sanitize(self):
+        from app.board_config import valid_apps
+
+        self.assertEqual(valid_apps([{"label": " x ", "launch": " y "},
+                                     {"label": 3, "launch": "z"}, "junk"]),
+                         [{"label": "X", "launch": "y"}])
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "cfg.json")
+            apps = [{"label": "DISCORD", "launch": "discord"}]
+            save_config(p, "es", {}, apps)
+            self.assertEqual(load_config(p, LABELS)["apps"], apps)
 
     def test_unknown_labels_and_blank_dropped(self):
         with tempfile.TemporaryDirectory() as d:
@@ -101,7 +125,7 @@ class TestBoardConfig(unittest.TestCase):
             p = os.path.join(d, "cfg.json")
             save_config(p, "fr", {})
             cfg = load_config(p, LABELS)
-            self.assertEqual(cfg["voice_lang"], "es")
+            self.assertEqual(cfg["voice_lang"], "en")
 
 
 class TestWebState(unittest.TestCase):

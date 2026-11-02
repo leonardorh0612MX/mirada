@@ -492,7 +492,11 @@ def main():
         root.after(33, loop)
 
     root.after(33, loop)
-    root.mainloop()
+    try:
+        root.mainloop()
+    except KeyboardInterrupt:
+        print("interrupted (Ctrl+C) - exiting cleanly. "
+              "Shift+Q also quits from inside.")
     cap.release()
     return 0
 

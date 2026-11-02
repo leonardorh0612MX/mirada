@@ -21,13 +21,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.board import (CELLS, PHRASE, guide_reference, phrase_area,  # noqa: E402
+from app.board import (PHRASE, enrollment_plan,  # noqa: E402
+                       guide_reference, natural_block_indices, phrase_area,
                        pose_inside, strip_layout)
 from app.board_config import load_config, save_config  # noqa: E402
+from app.i18n import (cells_for_lang, funcs_for_lang, norm_lang,  # noqa: E402
+                      s)
 from app.camselect import available_cameras, available_monitors  # noqa: E402
 from app.deskkeys import grid_keys  # noqa: E402
-from app.inject import shift_q_pressed  # noqa: E402
-from app.keyboard_layout import hit_key  # noqa: E402
+from app.inject import click_at, send_text, shift_q_pressed  # noqa: E402
+from app.keyboard_layout import board_keyboard, hit_key, type_text  # noqa: E402
+from app.words import apply_suggestion, current_prefix, load_words, suggest  # noqa: E402
+from app.apps import open_app  # noqa: E402
 from app.speak import set_language, speak, voice_status  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,12 +41,72 @@ STATE = {
     "phase": "setup", "gaze": None, "hl": None, "holding": False,
     "hold_frac": 0.0, "covered": True, "face_msg": "", "bright": None,
     "dist": None, "sentence": [], "busy": False, "open_settings": False,
-    "voice_lang": "es", "phrases": {},
+    "voice_lang": "en", "phrases": {}, "page": "frases", "launched": None,
+    "dwell_frac": 0.0, "lang": "en",
+    "armed": None, "typed": "", "kb_v": 0,
     "calib": {"n": 0, "total": 32, "dot": None, "captured": False},
     "guide": None, "said": 0,
 }
+class AppDwell:
+    """Stable-gaze click for app mode. Pure timing logic.
+
+    Blink-hold clicks fired all over Discord in web-20261101-230023
+    (11 clicks while just looking around). A click needs the gaze to
+    rest within radius_px for dwell_s, then a refractory window.
+    Jitter never sits still, so samples accumulate around a running
+    centroid and the click lands on that centroid - not on the live
+    (wandering) point. progress() drives the ring's fill arc.
+    """
+
+    def __init__(self, radius_px=130.0, dwell_s=1.0, refractory_s=2.0):
+        self.radius_px = radius_px
+        self.dwell_s = dwell_s
+        self.refractory_s = refractory_s
+        self._sx = 0.0
+        self._sy = 0.0
+        self._n = 0
+        self._t0 = 0.0
+        self._until = 0.0
+
+    def reset(self):
+        self._n = 0
+
+    @property
+    def centroid(self):
+        if not self._n:
+            return None
+        return (self._sx / self._n, self._sy / self._n)
+
+    def progress(self, now):
+        if not self._n or now < self._until:
+            return 0.0
+        return min(1.0, (now - self._t0) / self.dwell_s)
+
+    def update(self, x, y, now):
+        if now < self._until:
+            self._n = 0
+            return False
+        if not self._n:
+            self._sx, self._sy, self._n, self._t0 = x, y, 1, now
+            return False
+        cx, cy = self.centroid
+        if ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 > self.radius_px:
+            self._sx, self._sy, self._n, self._t0 = x, y, 1, now
+            return False
+        self._sx += x
+        self._sy += y
+        self._n += 1
+        if now - self._t0 >= self.dwell_s:
+            self._until = now + self.refractory_s
+            return True
+        return False
+
+
 CMDQ = queue.Queue()
 SETUP = {"choice": None}
+FS_EVENT = threading.Event()  # page asks the native window to toggle fullscreen
+RETURN_EVENT = threading.Event()  # overlay asks to bring the board back
+KB_EVENT = threading.Event()  # overlay asks for the keyboard page
 PROBE_CAPS = {}
 
 
@@ -76,6 +141,46 @@ class Handler(BaseHTTPRequestHandler):
             path = os.path.join(REPO, "site", "board.html")
             with open(path, "rb") as fh:
                 body = fh.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/back":
+            # Floating dock inside apps: dark glass tiles, letterspaced
+            # caps. Labels follow the setup language (MIRADA is brand).
+            lang = STATE.get("lang", "en")
+            back_sub = s(lang, "back_sub")
+            kb_main = s(lang, "kb_main")
+            kb_sub = s(lang, "kb_sub")
+            font = ("font-family:'Segoe UI Variable Display','Segoe UI',"
+                    "system-ui,sans-serif;")
+            body = ("<!DOCTYPE html><meta charset=utf-8><title>Mirada</title>"
+                    "<style>html,body{height:100%;margin:0;background:transparent;"
+                    "display:flex;gap:14px;padding:10px;box-sizing:border-box}"
+                    "button{flex:1;border:0;border-radius:34px;color:#f5f5f7;"
+                    "font-weight:600;font-size:30px;letter-spacing:4px;" + font +
+                    "cursor:pointer;"
+                    "box-shadow:0 16px 40px rgba(0,0,0,.55),"
+                    "inset 0 2px 3px rgba(255,255,255,.35),"
+                    "inset 0 -10px 22px rgba(0,0,0,.5);"
+                    "text-shadow:0 2px 12px rgba(0,0,0,.8)}"
+                    ".b1{background:radial-gradient(circle at 30% 22%,"
+                    "rgba(255,255,255,.28),rgba(255,255,255,0) 55%),"
+                    "linear-gradient(160deg,#333336,#0c0c0e)}"
+                    ".b2{background:radial-gradient(circle at 30% 22%,"
+                    "rgba(255,255,255,.32),rgba(255,255,255,0) 55%),"
+                    "linear-gradient(160deg,#3a3a3e,#141416)}"
+                    "button:active{transform:scale(.96)}"
+                    "small{display:block;font-weight:600;font-size:12px;" + font +
+                    "opacity:.7;margin-top:8px;letter-spacing:6px}</style>"
+                    "<button class=b1 onclick=\"post('back')\">"
+                    "&#8592; MIRADA<small>" + back_sub + "</small></button>"
+                    "<button class=b2 onclick=\"post('keyboard')\">"
+                    "&#9000; " + kb_main + "<small>" + kb_sub + "</small></button>"
+                    "<script>function post(k){fetch('/action',{method:'POST',"
+                    "headers:{'Content-Type':'application/json'},"
+                    "body:JSON.stringify({kind:k})})}</script>").encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -135,9 +240,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
                 return
-            cap, lock = entry
+            cap, lock, cache = entry
             import cv2
 
+            now = time.monotonic()
+            if cache["jpg"] is not None and now - cache["t"] < 0.25:
+                body = cache["jpg"]
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             with lock:
                 ok, frame = cap.read()
             if not ok or frame is None:
@@ -145,8 +259,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             ok, enc = cv2.imencode(".jpg", frame,
-                                   [cv2.IMWRITE_JPEG_QUALITY, 65])
+                                   [cv2.IMWRITE_JPEG_QUALITY, 72])
             body = enc.tobytes()
+            cache.update(t=now, jpg=body)
             self.send_response(200)
             self.send_header("Content-Type", "image/jpeg")
             self.send_header("Content-Length", str(len(body)))
@@ -164,7 +279,9 @@ class Handler(BaseHTTPRequestHandler):
             body = {}
         kind = body.get("kind")
         if kind == "setup":
-            SETUP["choice"] = (int(body["camera"]), int(body["monitor"]))
+            SETUP["choice"] = (int(body["camera"]), int(body["monitor"]),
+                               body.get("lang") if body.get("lang") in
+                               ("en", "es") else "en")
             self._json({"ok": True})
         elif kind == "quit":
             CMDQ.put(("quit", None))
@@ -177,6 +294,15 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True})
         elif kind == "settings_close":
             CMDQ.put(("settings_close", None))
+            self._json({"ok": True})
+        elif kind == "fullscreen":
+            FS_EVENT.set()
+            self._json({"ok": True})
+        elif kind == "back":
+            RETURN_EVENT.set()
+            self._json({"ok": True})
+        elif kind == "keyboard":
+            KB_EVENT.set()
             self._json({"ok": True})
         else:
             self._json({"ok": False}, 400)
@@ -206,15 +332,10 @@ def engine(notify_done):
                           time.strftime("web-%Y%m%d-%H%M%S"), meta={})
     print(f"session: {session}")
     cfg_path = os.path.join(REPO, "data", "board_config.json")
-    cfg = load_config(cfg_path, [c[0] for c in CELLS])
-    PHRASE.update(cfg["phrases"])
-    set_language(cfg["voice_lang"])
-    print(f"voices: {voice_status()}")
-    state_set(phrases=dict(PHRASE), voice_lang=cfg["voice_lang"])
 
     # Probe cameras for the picker (released once setup is chosen).
     for idx, cap in available_cameras():
-        PROBE_CAPS[idx] = (cap, threading.Lock())
+        PROBE_CAPS[idx] = (cap, threading.Lock(), {"t": 0.0, "jpg": None})
     print(f"cameras: {sorted(PROBE_CAPS)}")
 
     while SETUP["choice"] is None:
@@ -222,28 +343,94 @@ def engine(notify_done):
             notify_done()
             return
         time.sleep(0.1)
-    cam_idx, mon_idx = SETUP["choice"]
-    for idx, (cap, _lk) in list(PROBE_CAPS.items()):
+    # Language is chosen on the setup screen (default English): it drives
+    # cells, funcs, default apps, phrases, TTS voice and calib cues.
+    cam_idx, mon_idx, lang = SETUP["choice"]
+    lang = norm_lang(lang)
+    for idx, (cap, _lk, _cache) in list(PROBE_CAPS.items()):
         cap.release()
     PROBE_CAPS.clear()
+    lang_cells = cells_for_lang(lang)
+    cfg = load_config(cfg_path, [c[0] for c in lang_cells], lang)
+    PHRASE.clear()
+    PHRASE.update(dict(lang_cells))
+    PHRASE.update(cfg["phrases"])
+    set_language(lang)
+    cfg["voice_lang"] = lang
+    print(f"voices: {voice_status()}")
+    state_set(phrases=dict(PHRASE), voice_lang=lang, lang=lang)
     if mon_idx >= len(monitors):
         mon_idx = 0
     mleft, mtop, mw, mh = monitors[mon_idx]
     _py0, _py1 = phrase_area(mh)
-    cells = grid_keys([c[0] for c in CELLS], 2, 4, 16, _py0, mw - 32,
+    cells = grid_keys([c[0] for c in lang_cells], 2, 4, 16, _py0, mw - 32,
                       _py1 - _py0)
-    funcs, bar_rect = strip_layout(mw, mh)
+    app_entries = cfg["apps"]
+    apps_cells = grid_keys([a["label"] for a in app_entries], 2, 4, 16,
+                           _py0, mw - 32, _py1 - _py0)
+    _f5, bar_rect = strip_layout(mw, mh)
+    _fy = _f5[0]["rect"][1]
+    _fh = _f5[0]["rect"][3] - _f5[0]["rect"][1]
+
+    def _func_row(row):
+        pairs = funcs_for_lang(lang, row)
+        keys = grid_keys([label for _fid, label in pairs], 1, len(pairs),
+                         16, _fy, mw - 32, _fh)
+        for k, (fid, _label) in zip(keys, pairs):
+            k["key"] = fid
+        return keys
+
+    funcs_main = _func_row("main")
+    funcs_apps = _func_row("apps")
+    funcs_kb = _func_row("kb")
+    func_ids = {}
+    for _row in (funcs_main, funcs_apps, funcs_kb):
+        for _k in _row:
+            func_ids[_k["label"]] = _k["key"]
+    send_label = next(label for label, fid in func_ids.items()
+                      if fid == "send")
+    kb_keys = board_keyboard(mw, _py0 + 64, _py1 - _py0 - 64)
+    words_list = load_words(lang=lang)
+    typed = {"text": ""}
+    sug = {"keys": []}
+    page = {"cur": "frases"}
+
+    def active_cells():
+        if page["cur"] == "apps":
+            return apps_cells
+        if page["cur"] == "teclado":
+            return kb_keys + sug["keys"]
+        return cells
+
+    def active_funcs():
+        if page["cur"] == "apps":
+            return funcs_apps
+        if page["cur"] == "teclado":
+            return funcs_kb
+        return funcs_main
 
     def frac_rect(r):
         return [r[0] / mw, r[1] / mh, (r[2] - r[0]) / mw, (r[3] - r[1]) / mh]
 
-    state_set(layout={
-        "cells": [{"label": c["label"], "rect": frac_rect(c["rect"])}
-                  for c in cells],
-        "funcs": [{"label": c["label"], "rect": frac_rect(c["rect"])}
-                  for c in funcs],
-        "bar": frac_rect(bar_rect),
-    })
+    def _pack(keys):
+        return [{"label": c["label"], "rect": frac_rect(c["rect"])}
+                for c in keys]
+
+    layout_state = {"cells": _pack(cells), "apps": _pack(apps_cells),
+                    "funcs_main": _pack(funcs_main),
+                    "funcs_apps": _pack(funcs_apps),
+                    "funcs_kb": _pack(funcs_kb), "kb": _pack(kb_keys),
+                    "kb_sug": [], "bar": frac_rect(bar_rect)}
+    state_set(layout=layout_state, page="frases", launched=None)
+
+    def refresh_kb():
+        words_now = suggest(current_prefix(typed["text"]), words_list, 3)
+        sug["keys"] = grid_keys(words_now, 1, max(1, len(words_now)), 16,
+                                _py0, mw - 32, 56) if words_now else []
+        layout_state["kb_sug"] = _pack(sug["keys"])
+        state_set(typed=typed["text"],
+                  kb_v=state_get()["kb_v"] + 1,
+                  layout=dict(layout_state))
 
     cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
     if not cap.isOpened():
@@ -281,9 +468,6 @@ def engine(notify_done):
             feats = None
         return (feats if valid else None), ear, hud, lms
 
-    grid = [(mleft + mw * fx, mtop + mh * fy)
-            for fy in (0.08, 0.36, 0.64, 0.92)
-            for fx in (0.08, 0.36, 0.64, 0.92)]
     calib, ear_open = [], []
     corrector, blink, hull = [None], [None], [None]
 
@@ -335,12 +519,13 @@ def engine(notify_done):
             if stable >= 1.2 or now - t0 > 6.0:
                 break
         state_set(phase="calib", guide=None)
-        plan = grid * 2
-        for n, (gx, gy) in enumerate(plan, 1):
+        plan = [(mleft + mw * fx, mtop + mh * fy, msg)
+                for fx, fy, msg in enrollment_plan(lang)]
+        for n, (gx, gy, msg) in enumerate(plan, 1):
             fb = FixationBuffer(min_frames=12)
             state_set(calib={"n": n, "total": len(plan),
                              "dot": [(gx - mleft) / mw, (gy - mtop) / mh],
-                             "captured": False})
+                             "captured": False, "msg": msg})
             while not fb.ready():
                 feats, ear, _, _ = snap()
                 fb.add(feats)
@@ -348,7 +533,7 @@ def engine(notify_done):
                     ear_open.append(ear)
             state_set(calib={"n": n, "total": len(plan),
                              "dot": [(gx - mleft) / mw, (gy - mtop) / mh],
-                             "captured": True})
+                             "captured": True, "msg": msg})
             calib.append((fb.average(), gx, gy))
             append_event(session, "calib",
                          {"features": fb.average(), "target": [gx, gy]})
@@ -371,21 +556,29 @@ def engine(notify_done):
             px, py = map_to_screen(feats, matrix)
             errs.append(((px - gx) ** 2 + (py - gy) ** 2) ** 0.5)
         err = sum(errs) / len(errs)
-        print(f"calibration resub={err:.0f}px")
-        append_event(session, "calibration_quality", {"resub_px": err})
-        if corrector[0] is not None and err > 350:
+        nat = natural_block_indices(len(errs))
+        err_nat = sum(errs[i] for i in nat) / len(nat)
+        print(f"calibration resub={err:.0f}px (natural {err_nat:.0f}px)")
+        append_event(session, "calibration_quality",
+                     {"resub_px": err, "resub_natural_px": err_nat})
+        if corrector[0] is not None and err_nat > 350:
             print("recalibration REJECTED - keeping old map")
             return
-        if corrector[0] is None and err > 300 and not state.get("_retried"):
+        if corrector[0] is None and err_nat > 300 and not state.get("_retried"):
             state["_retried"] = True
             print("initial fit weak - hold still, enrolling again...")
             refit_all()
             return
-        corrector[0] = BiasCorrector(lambda f: map_to_screen(f, matrix), means)
+        corrector[0] = BiasCorrector(lambda f: map_to_screen(f, matrix),
+                                     means, certain_bias_only=True,
+                                     trust_px=15.0)
         hull[0] = convex_hull([(gx, gy) for _, gx, gy in samples])
         ear_open.sort()
         med = ear_open[len(ear_open) // 2] if ear_open else 0.30
-        blink[0] = LongBlink(ear_threshold=min(0.25, max(0.12, med * 0.6)),
+        # Downgaze (SPACE row, bottom cells) narrows open eyes: factor
+        # 0.52 keeps shut (minEAR ~0.07-0.11 measured) well separated from
+        # downgaze-open (~0.24), where 0.6 straddled holds.
+        blink[0] = LongBlink(ear_threshold=min(0.25, max(0.12, med * 0.52)),
                              hold_s=0.4)
         ear_gate[0] = blink[0].ear_threshold
         print(f"EAR: open_median={med:.3f} threshold={blink[0].ear_threshold:.3f}")
@@ -395,6 +588,7 @@ def engine(notify_done):
     state_set(busy=False, phase="board")
     state["started"] = time.perf_counter()
     smooth = {"x": None, "y": None}
+    app_dwell = AppDwell()
     gate = JumpGate(agree_px=250.0)
     feat_window, feat_history, kb_history, ear_stream = [], [], [], []
     last_hl = [None]
@@ -430,46 +624,147 @@ def engine(notify_done):
         state_set(busy=False, phase="board")
         state["started"] = time.perf_counter()
 
+    def apply_anchor(label, rects, now):
+        """Confirmed selection = exact anchor at the tile centre."""
+        pre = [f for t, f in feat_history if t <= now - 0.7]
+        if not pre:
+            return "no_anchor"
+        for k in rects:
+            if k["label"] == label:
+                x1, y1, x2, y2 = k["rect"]
+                stt, info = corrector[0].update(
+                    pre[-1], ((x1 + x2) / 2 + mleft, (y1 + y2) / 2 + mtop),
+                    certain=True)
+                return f"{stt}:{info.get('residual', 0):.0f}"
+        return "no_anchor"
+
     def fire_cell(target, source, ear, now):
         phrase = PHRASE[target]
         speak(phrase)
         state["said"].append(target)
         state["sentence"].append(phrase)
         state_set(sentence=list(state["sentence"]), said=len(state["said"]))
-        verdict = "no_anchor"
-        if source == "gaze":
-            pre = [f for t, f in feat_history if t <= now - 0.7]
-            if pre:
-                for k in cells:
-                    if k["label"] == target:
-                        x1, y1, x2, y2 = k["rect"]
-                        stt, info = corrector[0].update(
-                            pre[-1],
-                            ((x1 + x2) / 2 + mleft, (y1 + y2) / 2 + mtop),
-                            certain=True)
-                        verdict = f"{stt}:{info.get('residual', 0):.0f}"
-                        break
+        verdict = (apply_anchor(target, cells, now)
+                   if source == "gaze" else "no_anchor")
         append_event(session, "selection",
                      {"key": target, "phrase": phrase, "ear": ear,
                       "anchor": verdict, "source": source})
 
+    armed = {"label": None, "until": 0.0}
+
+    def fire_app(label, source, now):
+        entry = next((a for a in app_entries if a["label"] == label), None)
+        if entry is None:
+            return
+        # Launching is consequential: gaze needs a second confirming hold
+        # (a passing gaze fired CORREO/YOUTUBE in web-20261101-122657).
+        # The caregiver's mouse click is explicit and fires at once.
+        if source == "gaze":
+            if armed["label"] != label or now > armed["until"]:
+                armed.update(label=label, until=now + 5.0)
+                state_set(armed=label)
+                append_event(session, "app_arm", {"label": label})
+                return
+        armed.update(label=None, until=0.0)
+        ok, detail = open_app(entry)
+        print(f"app launch {label}: ok={ok} ({detail})")
+        if source == "gaze":
+            apply_anchor(label, apps_cells, now)
+        page["cur"] = "frases"
+        state_set(launched=label, armed=None, page="frases")
+        append_event(session, "app_launch",
+                     {"label": label, "ok": ok, "detail": detail,
+                      "source": source})
+
+    def fire_kb(label, source, now):
+        if any(k["label"] == label for k in sug["keys"]):
+            typed["text"] = apply_suggestion(typed["text"], label)
+        else:
+            typed["text"] = type_text(typed["text"], label)
+        if source == "gaze":
+            apply_anchor(label, kb_keys + sug["keys"], now)
+        refresh_kb()
+        append_event(session, "kb_key",
+                     {"label": label, "typed": typed["text"],
+                      "source": source})
+
+    def do_send(now):
+        text = typed["text"].strip()
+        if not text:
+            return
+        typed["text"] = ""
+        refresh_kb()
+        state_set(launched=send_label)
+        append_event(session, "send_text", {"text": text})
+
+        def _inject():
+            time.sleep(0.8)  # let the app window take focus first
+            try:
+                send_text(text + "{ENTER}")
+                print(f"sent to app: {text!r}")
+            except Exception as e:
+                print(f"send failed: {e}")
+            time.sleep(5.0)  # browser fallback: auto-return window
+            if state_get().get("launched") == send_label:
+                state_set(launched=None)
+
+        threading.Thread(target=_inject, daemon=True).start()
+
     def fire_target(target, source, ear, now):
-        if target == "QUIT":
+        # Func dispatch matches stable ids, never display labels: EN and
+        # ES rows spell them differently (KEYBOARD/TECLADO, SEND/ENVIAR).
+        fid = func_ids.get(target)
+        if fid == "quit":
             do_quit(now)
-        elif target == "RECAL":
+        elif fid == "recal":
             do_recalibrate(now)
-        elif target == "SPEAK":
-            speak_sentence()
-        elif target == "CLEAR":
+        elif fid == "speak":
+            if page["cur"] == "teclado":
+                if typed["text"].strip():
+                    speak(typed["text"].strip())
+            else:
+                speak_sentence()
+        elif fid == "clear":
             state["sentence"] = []
             state_set(sentence=[])
             append_event(session, "clear", {})
-        elif target == "SETTINGS":
+        elif fid == "settings":
             state_set(open_settings=True)
+        elif fid == "apps":
+            page["cur"] = "apps"
+            state_set(page="apps")
+        elif fid == "phrases":
+            page["cur"] = "frases"
+            state_set(page="frases")
+        elif fid == "keyboard":
+            page["cur"] = "teclado"
+            state_set(page="teclado")
+            refresh_kb()
+        elif fid == "send":
+            do_send(now)
+        elif (page["cur"] == "teclado" and target is not None
+              and any(k["label"] == target
+                      for k in kb_keys + sug["keys"])):
+            fire_kb(target, source, now)
+        elif target is not None and any(a["label"] == target
+                                        for a in app_entries):
+            fire_app(target, source, now)
         elif target is not None and target in PHRASE:
             fire_cell(target, source, ear, now)
 
     while not state["done"]:
+        if RETURN_EVENT.is_set():
+            RETURN_EVENT.clear()
+            state_set(launched=None)
+            append_event(session, "returned", {})
+            print("returned to board")
+        if KB_EVENT.is_set():
+            KB_EVENT.clear()
+            page["cur"] = "teclado"
+            state_set(launched=None, page="teclado")
+            refresh_kb()
+            append_event(session, "kb_open", {})
+            print("keyboard opened from app")
         # Drain commands first (mouse must never wait on the gaze loop).
         try:
             while True:
@@ -482,24 +777,26 @@ def engine(notify_done):
                     fire_target(payload, "mouse", None, time.perf_counter())
                 elif kind == "settings":
                     phrases = payload.get("phrases") or {}
-                    known = {c[0] for c in CELLS}
+                    known = {c[0] for c in lang_cells}
                     phrases = {k: v.strip() for k, v in phrases.items()
                                if k in known and isinstance(v, str) and v.strip()}
-                    lang = payload.get("voice_lang", "es")
+                    # Caregiver may switch the TTS voice only; the session
+                    # language (cells, cues) stays as chosen at setup.
+                    vlang = payload.get("voice_lang", "en")
                     try:
-                        save_config(cfg_path, lang, phrases)
+                        save_config(cfg_path, vlang, phrases, cfg["apps"])
                     except Exception as e:
                         print(f"settings save failed: {e}")
                         continue
                     PHRASE.update(phrases)
-                    set_language(lang)
-                    cfg["voice_lang"] = lang
+                    set_language(vlang)
+                    cfg["voice_lang"] = vlang
                     state_set(open_settings=False, phrases=dict(PHRASE),
-                              voice_lang=lang)
+                              voice_lang=vlang)
                     append_event(session, "settings_saved",
-                                 {"voice_lang": lang,
+                                 {"voice_lang": vlang,
                                   "n_phrases": len(phrases)})
-                    print(f"settings saved: voice={lang} "
+                    print(f"settings saved: voice={vlang} "
                           f"active={voice_status().get('active')} "
                           f"phrases={len(phrases)}")
         except queue.Empty:
@@ -521,10 +818,10 @@ def engine(notify_done):
             cx = (lms[454][0] + lms[234][0]) / 2.0
             frontal = fw > 0 and abs(lms[1][0] - cx) / fw < 0.35
             if not frontal:
-                face_msg = "face the screen"
+                face_msg = s(lang, "face_turn")
                 feats, ear = None, None
         elif ear is None:
-            face_msg = "NO FACE - come back to the camera"
+            face_msg = s(lang, "face_gone")
         select_event = blink[0].update(ear, now) == "select"
         ear_stream.append((round(now - state["started"], 3),
                            round(ear, 3) if ear is not None else -1.0))
@@ -557,11 +854,15 @@ def engine(notify_done):
                     feat_window.extend(gate.frames)
                     gate.reset()
                 else:
-                    smooth["x"] = 0.4 * px + 0.6 * smooth["x"]
-                    smooth["y"] = 0.4 * py + 0.6 * smooth["y"]
+                    # App targets are small and jitter never rests: heavy
+                    # smoothing in app mode, responsive on the board.
+                    a = 0.15 if state_get().get("launched") else 0.4
+                    smooth["x"] = a * px + (1 - a) * smooth["x"]
+                    smooth["y"] = a * py + (1 - a) * smooth["y"]
             covered = inside_hull((smooth["x"], smooth["y"]), hull[0],
                                   margin=40.0)
-            last_hl[0] = hit_key(cells + funcs, smooth["x"] - mleft,
+            last_hl[0] = hit_key(active_cells() + active_funcs(),
+                                 smooth["x"] - mleft,
                                  smooth["y"] - mtop)
         hl = last_hl[0]
         kb_history.append((now, hl))
@@ -570,6 +871,33 @@ def engine(notify_done):
         gaze_frac = None
         if smooth["x"] is not None:
             gaze_frac = [(smooth["x"] - mleft) / mw, (smooth["y"] - mtop) / mh]
+        dwell_frac = 0.0
+        if state_get().get("launched"):
+            # Eye-mouse inside the opened app: a RESTING gaze clicks
+            # (AppDwell), never a blink - blinking while reading fired
+            # everywhere. Board cells never fire here (122657 extras).
+            if smooth["x"] is not None:
+                rel_x = smooth["x"] - mleft
+                rel_y = smooth["y"] - mtop
+                # Floating dock: 440x210 at (mw-476, 16); the watcher
+                # owns clicks there, with a 20 px left margin.
+                if rel_x > mw - 496 and rel_y < 226:
+                    app_dwell.reset()
+                elif app_dwell.update(smooth["x"], smooth["y"], now):
+                    cx, cy = app_dwell.centroid
+                    click_at(cx, cy)
+                    append_event(session, "app_click",
+                                 {"x": round(cx), "y": round(cy)})
+                    print(f"app click at ({cx:.0f},{cy:.0f})")
+                    app_dwell.reset()
+                else:
+                    dwell_frac = app_dwell.progress(now)
+        elif select_event:
+            past = [h for t, h in kb_history if t <= now - 0.45]
+            target = past[-1] if past else hl
+            append_event(session, "trigger",
+                         {"target": target, "hl_now": hl})
+            fire_target(target, "gaze", ear, now)
         state_set(
             gaze=gaze_frac, hl=hl, covered=bool(covered), face_msg=face_msg,
             bright=(hud or {}).get("brightness"),
@@ -577,13 +905,8 @@ def engine(notify_done):
             holding=blink[0].holding(),
             hold_frac=(min(1.0, blink[0].hold_time(now) / blink[0].hold_s)
                        if blink[0] else 0.0),
+            dwell_frac=dwell_frac,
         )
-        if select_event:
-            past = [h for t, h in kb_history if t <= now - 0.45]
-            target = past[-1] if past else hl
-            append_event(session, "trigger",
-                         {"target": target, "hl_now": hl})
-            fire_target(target, "gaze", ear, now)
         time.sleep(1 / 60)
 
     cap.release()

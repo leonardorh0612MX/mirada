@@ -28,6 +28,27 @@ class TestRecorder(unittest.TestCase):
         self.assertEqual([e["kind"] for e in events], ["gaze", "anchor", "dot"])
         self.assertEqual(events[0]["payload"], {"x": 1.0})
 
+    def test_concurrent_appends_stay_parseable(self):
+        # sess-20261101-130237: a listener thread's write interleaved
+        # inside a multi-KB gaze line and destroyed one record.
+        import threading
+
+        sp = new_session(self.tmp, "s3")
+        big = {"landmarks": [[float(i), float(i)] for i in range(478)]}
+
+        def writer(kind, n):
+            for _ in range(n):
+                append_event(sp, kind, big if kind == "gaze" else {"pos": [1, 2]})
+
+        threads = [threading.Thread(target=writer, args=("gaze", 60)),
+                   threading.Thread(target=writer, args=("click", 60))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        events = read_events(sp)  # must not raise
+        self.assertEqual(len(events), 120)
+
     def test_backwards_rejected(self):
         sp = new_session(self.tmp, "s2")
         append_event(sp, "gaze", {}, t_mono=5.0)

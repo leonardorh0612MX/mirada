@@ -63,22 +63,69 @@
   @media (max-width: 900px) { #setup .row { grid-template-columns: 1fr; } }
   .group h3 { font-size: 14px; letter-spacing: .14em; text-transform: uppercase;
     color: var(--caramel); margin-bottom: 14px; font-weight: 700; }
-  .cards { display: flex; flex-wrap: wrap; gap: 16px; }
-  .pick { background: var(--card); border: 2px solid var(--line); border-radius: 20px;
-    padding: 12px; cursor: pointer; width: 240px;
-    box-shadow: 0 18px 44px -22px rgba(80,55,20,.35);
-    transition: border-color .2s ease, transform .2s var(--spring); }
-  .pick:hover { transform: translateY(-3px); }
-  .pick.sel { border-color: var(--caramel); }
-  .pick img { width: 100%; height: 128px; object-fit: cover; border-radius: 12px;
-    background: #e8e8ed; display: block; }
-  .pick b { display: block; margin-top: 10px; font-size: 16px; }
-  .pick span { color: var(--muted); font-size: 13px; }
+  .cards { display: flex; flex-wrap: wrap; gap: 18px; }
+  .pick { position: relative; background: var(--card); border: 2px solid var(--line);
+    border-radius: 22px; padding: 12px; cursor: pointer; width: 264px;
+    box-shadow: 0 24px 50px -24px rgba(29,29,31,.35),
+      inset 0 1px 0 rgba(255,255,255,1);
+    transition: border-color .25s ease, transform .25s var(--spring),
+      box-shadow .25s var(--spring);
+    animation: cardin .55s var(--spring) backwards; }
+  .pick:nth-child(2) { animation-delay: .07s; }
+  .pick:nth-child(3) { animation-delay: .14s; }
+  .pick:nth-child(4) { animation-delay: .21s; }
+  @keyframes cardin { from { opacity: 0; transform: translateY(16px) scale(.97); } }
+  .pick:hover { transform: translateY(-4px);
+    box-shadow: 0 32px 60px -24px rgba(29,29,31,.4), inset 0 1px 0 #fff; }
+  .pick.sel { border-color: var(--coffee);
+    box-shadow: 0 0 0 4px rgba(29,29,31,.12), 0 28px 54px -22px rgba(29,29,31,.45); }
+  .pick.sel::after { content: "✓"; position: absolute; right: 12px; bottom: 12px;
+    width: 30px; height: 30px; border-radius: 50%; background: var(--coffee);
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 17px; font-weight: 800; animation: pop .35s var(--spring); }
+  .pick .media { position: relative; border-radius: 14px; overflow: hidden;
+    background: linear-gradient(120deg, #e9e9ee 30%, #f6f6f9 50%, #e9e9ee 70%);
+    background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  .pick img { width: 100%; height: 148px; object-fit: cover; display: block;
+    opacity: 0; transform: scale(1.04); transition: opacity .45s ease, transform .6s var(--spring); }
+  .pick img.loaded { opacity: 1; transform: none; }
+  .pick .live { position: absolute; left: 10px; top: 10px; z-index: 2;
+    background: rgba(20,20,22,.72); color: #fff; backdrop-filter: blur(6px);
+    font-size: 11px; font-weight: 800; letter-spacing: .12em;
+    padding: 5px 10px 5px 8px; border-radius: 999px; display: flex;
+    align-items: center; gap: 6px; }
+  .pick .live i { width: 8px; height: 8px; border-radius: 50%;
+    background: #ff453a; animation: blinkdot 1.4s ease-in-out infinite; }
+  @keyframes blinkdot { 50% { opacity: .25; } }
+  .pick b { display: block; margin-top: 11px; font-size: 16.5px; letter-spacing: -.01em; }
+  .pick span.sub { color: var(--muted); font-size: 13px; }
+  .skel { pointer-events: none; }
+  .skel .media { height: 148px; }
+  .skel b, .skel span.sub { color: transparent; }
+  .skel b::before, .skel span.sub::before { content: "········";
+    color: #d9d9de; letter-spacing: 2px; }
+  #leaving { position: absolute; inset: 0; z-index: 5; display: none;
+    align-items: center; justify-content: center; flex-direction: column;
+    gap: 20px; background: rgba(245,245,247,.82); backdrop-filter: blur(14px);
+    text-align: center; }
+  #leaving.on { display: flex; animation: cardin .4s var(--spring); }
+  #leaving .big { font-size: clamp(28px, 4vw, 44px); font-weight: 800;
+    letter-spacing: -.03em; }
+  #leaving .small { color: var(--muted); font-size: 17px; }
   #continue { margin-top: 40px; align-self: flex-start; background: var(--coffee);
     color: #fff; border: 0; font-size: 17px; font-weight: 650; padding: 14px 34px;
     border-radius: 999px; cursor: pointer; transition: transform .2s var(--spring), opacity .2s; }
   #continue:disabled { opacity: .35; cursor: default; }
   #continue:not(:disabled):hover { transform: translateY(-2px); }
+  .langseg { display: inline-flex; background: var(--card); border: 2px solid var(--line);
+    border-radius: 999px; padding: 5px; margin-bottom: 30px;
+    box-shadow: 0 18px 40px -22px rgba(29,29,31,.4), inset 0 1px 0 #fff; }
+  .langseg button { border: 0; background: transparent; cursor: pointer;
+    font-size: 15px; font-weight: 700; letter-spacing: .06em; color: var(--muted);
+    padding: 10px 26px; border-radius: 999px; transition: all .25s var(--spring); }
+  .langseg button.sel { background: var(--coffee); color: #fff;
+    box-shadow: 0 10px 24px -12px rgba(29,29,31,.6); }
 
   /* ---------- guide ---------- */
   #guide { align-items: center; justify-content: center; text-align: center; }
@@ -145,6 +192,16 @@
       inset 0 -12px 20px rgba(0,0,0,.5),
       0 26px 48px -18px rgba(29,29,31,.6); }
   .cell.hl.dim { background: #6e6e73; }
+  .cell.app { flex-direction: column; gap: 12px; }
+  .cell .ic { width: 68px; height: 68px; border-radius: 20px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 2px 3px rgba(255,255,255,.5),
+      inset 0 -8px 14px rgba(0,0,0,.18), 0 10px 22px -10px rgba(29,29,31,.5); }
+  .cell .ic svg { width: 40px; height: 40px; }
+  .cell.armed { outline: 5px solid #ff9f0a; outline-offset: -5px; }
+  .cell.kb { font-size: clamp(17px, 2.4vw, 34px); border-radius: 20px; }
+  .cell.sug { font-size: clamp(14px, 1.8vw, 24px); text-transform: uppercase;
+    letter-spacing: .06em; color: var(--muted); }
   .cell .fill { position: absolute; inset: 0; border-radius: 28px;
     background: rgba(255,255,255,.4); transform-origin: left;
     transform: scaleX(var(--p, 0)); pointer-events: none; }
@@ -204,14 +261,23 @@
 <section class="screen marble" id="setup">
   <div class="liquid"><i></i><i></i><i></i></div>
   <div style="position:relative">
-    <h2>Elige tu pantalla y tu cámara</h2>
-    <p class="sub">Haz click en cada una. Puedes cambiarlas cuando quieras reiniciando.</p>
+    <h2 data-i18n="setup_title">Choose your screen and camera</h2>
+    <p class="sub" data-i18n="setup_sub">Click each one. Restart anytime to change them.</p>
+    <div class="langseg" role="group" aria-label="Language">
+      <button type="button" data-lang="en" class="sel">ENGLISH</button>
+      <button type="button" data-lang="es">ESPAÑOL</button>
+    </div>
     <div class="row">
-      <div class="group"><h3>Monitor</h3><div class="cards" id="mons"></div></div>
-      <div class="group"><h3>Cámara · muévete para distinguirlas</h3>
+      <div class="group"><h3 data-i18n="monitor">Monitor</h3><div class="cards" id="mons"></div></div>
+      <div class="group"><h3 data-i18n="camera">Camera · move to tell them apart</h3>
         <div class="cards" id="cams"></div></div>
     </div>
-    <button id="continue" disabled>Continuar →</button>
+    <button id="continue" disabled data-i18n="continue">Continue →</button>
+  </div>
+  <div id="leaving">
+    <div class="big" data-i18n="leaving_big">Preparing your space…</div>
+    <div class="spin"></div>
+    <div class="small" data-i18n="leaving_small">Closing picker cameras · opening your camera</div>
   </div>
 </section>
 
@@ -222,48 +288,48 @@
     <img class="bust" src="bust.png" alt="Busto de mármol: centra tu cabeza aquí">
     <div id="face-el"></div>
   </div>
-  <h2>Tu postura cómoda</h2>
-  <p class="msg" id="guide-msg">busca tu rostro…</p>
+  <h2 data-i18n="guide_title">Your comfortable posture</h2>
+  <p class="msg" id="guide-msg" data-i18n="guide_search">finding your face…</p>
   <div class="chips">
-    <span class="mchip">Rostro <b id="chip-face">—</b></span>
-    <span class="mchip">Luz <b id="chip-light">—</b></span>
-    <span class="mchip">Distancia <b id="chip-dist">—</b></span>
+    <span class="mchip"><span data-i18n="chip_face">Face</span> <b id="chip-face">—</b></span>
+    <span class="mchip"><span data-i18n="chip_light">Light</span> <b id="chip-light">—</b></span>
+    <span class="mchip"><span data-i18n="chip_dist">Distance</span> <b id="chip-dist">—</b></span>
   </div>
 </section>
 
 <section class="screen" id="calib">
   <div class="pbar"><i id="pfill"></i></div>
-  <div class="count" id="ccount">CALIBRACIÓN</div>
+  <div class="count" id="ccount">CALIBRATION</div>
   <div id="dot"></div>
   <div class="spinbig" id="cspin"></div>
-  <div class="foot" id="cfoot">mira el punto verde · rostro quieto</div>
+  <div class="foot" id="cfoot" data-i18n="calib_foot">look at the dot · head and eyes together</div>
 </section>
 
 <section class="screen" id="board">
-  <div id="bar"><div class="sent" id="sent">mira + hold para hablar…</div>
+  <div id="bar"><div class="sent" id="sent" data-i18n="bar_hint">look + hold to speak…</div>
     <div class="st" id="bstat"></div></div>
 </section>
 
 <section class="screen marble" id="done">
   <div class="liquid"><i></i><i></i><i></i></div>
   <div style="position:relative">
-    <h2>Gracias.</h2>
-    <p id="done-p">Sesión terminada. Ya puedes cerrar esta pestaña.</p>
+    <h2 data-i18n="done_title">Thank you.</h2>
+    <p id="done-p" data-i18n="done_p">Session finished. You can close this tab.</p>
   </div>
 </section>
 
 <div id="modal">
   <div class="card">
-    <h2>Ajustes</h2>
-    <div class="sub">Voz y frases por celda. Lo opera el cuidador.</div>
+    <h2 data-i18n="modal_title">Settings</h2>
+    <div class="sub" data-i18n="modal_sub">Voice and phrases per cell. Operated by the caregiver.</div>
     <div class="langrow">
       <label><input type="radio" name="lang" value="es"> Español</label>
       <label><input type="radio" name="lang" value="en"> English</label>
     </div>
     <div id="phrase-rows"></div>
     <div class="btns">
-      <button class="save" id="m-save">Guardar</button>
-      <button class="close" id="m-close">Cerrar</button>
+      <button class="save" id="m-save" data-i18n="save">Save</button>
+      <button class="close" id="m-close" data-i18n="close">Close</button>
     </div>
   </div>
 </div>
@@ -272,6 +338,85 @@
 (function () {
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
+  /* Client strings. Default English (contest language); the setup
+     toggle previews live and travels to the server on Continue. */
+  var I18N = {
+    en: { setup_title: "Choose your screen and camera",
+      setup_sub: "Click each one. Restart anytime to change them.",
+      monitor: "Monitor", camera: "Camera · move to tell them apart",
+      continue: "Continue →", leaving_big: "Preparing your space…",
+      leaving_small: "Closing picker cameras · opening your camera",
+      guide_title: "Your comfortable posture",
+      guide_search: "finding your face…", chip_face: "Face",
+      chip_light: "Light", chip_dist: "Distance",
+      calib_foot: "look at the dot · head and eyes together",
+      bar_hint: "look + hold to speak…", done_title: "Thank you.",
+      done_p: "Session finished. You can close this tab.",
+      modal_title: "Settings",
+      modal_sub: "Voice and phrases per cell. Operated by the caregiver.",
+      save: "Save", close: "Close",
+      skel_mon: "MONITOR", skel_cam: "CAMERA", detecting: "detecting…",
+      live: "LIVE", cam_hint: "move to tell it apart",
+      g_sit_chip: "Measuring your posture…",
+      g_sit_msg: "get comfortable · sit as you always do",
+      g_ok_chip: "Your posture ✓", g_ok_msg: "that's your posture · starting…",
+      g_fix_chip: "Adjust your posture",
+      g_fix_msg: "return to your comfortable posture",
+      g_lost_chip: "Searching…", g_lost_msg: "finding your face…",
+      calib_title: "CALIBRATION", calib_busy: "fitting the map…",
+      done_count: "Session finished · {0} phrases spoken. You can close this tab.",
+      bar_app: "in the app ({0}) · return with the ← MIRADA circle",
+      bar_armed: "open {0}? hold your gaze again to confirm",
+      bar_outside: "gaze outside trusted area", stat_light: "light" },
+    es: { setup_title: "Elige tu pantalla y tu cámara",
+      setup_sub: "Haz click en cada una. Puedes cambiarlas cuando quieras reiniciando.",
+      monitor: "Monitor", camera: "Cámara · muévete para distinguirlas",
+      continue: "Continuar →", leaving_big: "Preparando tu espacio…",
+      leaving_small: "Cerrando cámaras de selección · abriendo tu cámara",
+      guide_title: "Tu postura cómoda",
+      guide_search: "busca tu rostro…", chip_face: "Rostro",
+      chip_light: "Luz", chip_dist: "Distancia",
+      calib_foot: "mira el punto · cabeza y ojos juntos",
+      bar_hint: "mira + hold para hablar…", done_title: "Gracias.",
+      done_p: "Sesión terminada. Ya puedes cerrar esta pestaña.",
+      modal_title: "Ajustes",
+      modal_sub: "Voz y frases por celda. Lo opera el cuidador.",
+      save: "Guardar", close: "Cerrar",
+      skel_mon: "MONITOR", skel_cam: "CÁMARA", detecting: "detectando…",
+      live: "EN VIVO", cam_hint: "muévete para distinguirla",
+      g_sit_chip: "Midiendo tu postura…",
+      g_sit_msg: "ponte cómodo · así como te sientas siempre",
+      g_ok_chip: "Tu postura ✓", g_ok_msg: "esa es tu postura · empezamos…",
+      g_fix_chip: "Ajusta tu postura",
+      g_fix_msg: "vuelve a tu postura cómoda",
+      g_lost_chip: "Buscando…", g_lost_msg: "busca tu rostro…",
+      calib_title: "CALIBRACIÓN", calib_busy: "calibrando el mapa…",
+      done_count: "Sesión terminada · {0} frases dichas. Ya puedes cerrar esta pestaña.",
+      bar_app: "en la app ({0}) · vuelve con el círculo ← MIRADA",
+      bar_armed: "¿abrir {0}? mantén la mirada otra vez para confirmar",
+      bar_outside: "mirada fuera del área confiable", stat_light: "luz" }
+  };
+  window._lang = "en";
+  function T(key) {
+    var s = (I18N[window._lang] || I18N.en)[key] || I18N.en[key] || key;
+    for (var i = 1; i < arguments.length; i++)
+      s = s.replace("{" + (i - 1) + "}", arguments[i]);
+    return s;
+  }
+  function applyLang() {
+    document.querySelectorAll("[data-i18n]").forEach(function (el) {
+      el.textContent = T(el.getAttribute("data-i18n"));
+    });
+    document.querySelectorAll(".langseg button").forEach(function (b) {
+      b.classList.toggle("sel", b.getAttribute("data-lang") === window._lang);
+    });
+  }
+  document.querySelectorAll(".langseg button").forEach(function (b) {
+    b.onclick = function () {
+      window._lang = b.getAttribute("data-lang");
+      applyLang(); loadSetup();
+    };
+  });
   var screens = ["splash", "setup", "guide", "calib", "board", "done"];
   function show(id) {
     screens.forEach(function (s) { $(s).classList.toggle("on", s === id); });
@@ -294,45 +439,84 @@
     });
   }
   function ready() { $("continue").disabled = !(pick.mon !== null && pick.cam !== null); }
+  var camTimer = null;
+  function skeletons(host, n, label) {
+    host.innerHTML = "";
+    for (var i = 0; i < n; i++) {
+      var d = document.createElement("div");
+      d.className = "pick skel";
+      d.innerHTML = '<div class="media"></div><b>' + label + '</b>' +
+        '<span class="sub">' + T("detecting") + '</span>';
+      host.appendChild(d);
+    }
+  }
   function loadSetup() {
+    skeletons($("mons"), 2, T("skel_mon"));
+    skeletons($("cams"), 3, T("skel_cam"));
     fetch("/monitors").then(function (r) { return r.json(); }).then(function (mons) {
       var host = $("mons"); host.innerHTML = "";
       mons.forEach(function (m) {
         var d = document.createElement("div");
         d.className = "pick"; d.dataset.idx = m.idx;
-        d.innerHTML = '<img src="data:image/jpeg;base64,' + m.img + '"><b>MONITOR ' +
-          m.idx + '</b><span>' + m.w + "x" + m.h + "</span>";
+        d.innerHTML = '<div class="media"><img alt="monitor"></div><b>' +
+          T("skel_mon") + " " + m.idx + '</b><span class="sub">' +
+          m.w + " × " + m.h + " px</span>";
+        var img = d.querySelector("img");
+        img.onload = function () { img.classList.add("loaded"); };
+        img.src = "data:image/jpeg;base64," + m.img;
         d.onclick = function () { pick.mon = m.idx; markSel(host, m.idx); ready(); };
         host.appendChild(d);
       });
       if (mons.length === 1) { pick.mon = mons[0].idx; markSel(host, pick.mon); ready(); }
+      else if (pick.mon !== null) { markSel(host, pick.mon); ready(); }
     });
     fetch("/cameras").then(function (r) { return r.json(); }).then(function (cams) {
-      var host = $("cams"); host.innerHTML = "";
+      var host = $("cams");
+      if (cams.length === 0) {
+        if ((window._camRetry = (window._camRetry || 0) + 1) <= 6)
+          setTimeout(loadSetup, 1200);
+        return;
+      }
+      host.innerHTML = "";
       cams.forEach(function (c) {
         var d = document.createElement("div");
         d.className = "pick"; d.dataset.idx = c.idx;
-        d.innerHTML = '<img alt="cam"><b>CÁMARA ' + c.idx + "</b><span>vista en vivo</span>";
+        d.innerHTML = '<div class="media"><span class="live"><i></i>' + T("live") +
+          '</span><img alt="cam"></div><b>' + T("skel_cam") + " " + c.idx +
+          '</b><span class="sub">' + T("cam_hint") + "</span>";
         d.onclick = function () { pick.cam = c.idx; markSel(host, c.idx); ready(); };
         host.appendChild(d);
-        d.querySelector("img").src = "/cam/" + c.idx + ".jpg?t=" + Date.now();
+        var img = d.querySelector("img");
+        img.onload = function () { img.classList.add("loaded"); };
+        img.src = "/cam/" + c.idx + ".jpg?t=" + Date.now();
       });
       if (cams.length === 1) { pick.cam = cams[0].idx; markSel(host, pick.cam); ready(); }
-      if (cams.length === 0 && (window._camRetry = (window._camRetry || 0) + 1) <= 4)
-        setTimeout(loadSetup, 1500);
-      setInterval(function () {
-        host.querySelectorAll(".pick img").forEach(function (img, i) {
-          img.src = "/cam/" + cams[i].idx + ".jpg?t=" + Date.now();
+      else if (pick.cam !== null) { markSel(host, pick.cam); ready(); }
+      if (camTimer) clearInterval(camTimer);
+      camTimer = setInterval(function () {
+        host.querySelectorAll(".pick").forEach(function (card) {
+          var img = card.querySelector("img");
+          if (img) img.src = "/cam/" + card.dataset.idx + ".jpg?t=" + Date.now();
         });
-      }, 700);
+      }, 380);
     });
   }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "F11") {
+      e.preventDefault();
+      fetch("/action", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "fullscreen" }) });
+    }
+  });
   $("continue").onclick = function () {
+    if (camTimer) { clearInterval(camTimer); camTimer = null; }
+    $("leaving").classList.add("on");
     if (document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().catch(function () {});
     }
     fetch("/action", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "setup", camera: pick.cam, monitor: pick.mon }) });
+      body: JSON.stringify({ kind: "setup", camera: pick.cam, monitor: pick.mon,
+        lang: window._lang }) });
   };
 
   /* ---------- gaze overlay ---------- */
@@ -347,14 +531,34 @@
   })();
 
   /* ---------- board rendering ---------- */
-  var built = false, cellEls = {};
-  function build(layout) {
+  var built = false, curPage = null, builtKbV = -1, cellEls = {};
+  function build(layout, page) {
     var board = $("board");
     board.querySelectorAll(".cell").forEach(function (e) { e.remove(); });
-    function place(list, cls) {
+    cellEls = {};
+    var ICONS = {
+      DISCORD: ["#5865F2", '<rect x="2.5" y="7" width="19" height="11" rx="5.5"/><circle cx="8.2" cy="12.5" r="1.3" fill="#fff"/><circle cx="15.8" cy="11.4" r="1.3" fill="#fff"/><circle cx="17.6" cy="13.6" r="1.3" fill="#fff"/>'],
+      NAVEGADOR: ["#0A84FF", '<circle cx="12" cy="12" r="8.5"/><ellipse cx="12" cy="12" rx="3.6" ry="8.5"/><path d="M3.5 12h17M5 6.5h14M5 17.5h14"/>'],
+      BROWSER: ["#0A84FF", '<circle cx="12" cy="12" r="8.5"/><ellipse cx="12" cy="12" rx="3.6" ry="8.5"/><path d="M3.5 12h17M5 6.5h14M5 17.5h14"/>'],
+      YOUTUBE: ["#FF0033", '<rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="M10.2 9.3v5.4l4.8-2.7z" fill="#fff" stroke="none"/>'],
+      WHATSAPP: ["#25D366", '<path d="M12 3.5a8.5 8.5 0 0 0-7.3 12.8L3.5 20.5l4.3-1.1A8.5 8.5 0 1 0 12 3.5z"/><path d="M9 9.2c.6 2.3 3.5 5.2 5.8 5.8l1-1.6-2.2-1-1 .8a8.6 8.6 0 0 1-2.3-2.3l.8-1-1-2.2z" fill="#fff" stroke="none"/>'],
+      CORREO: ["#EA4335", '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M4 7.5l8 6 8-6"/>'],
+      MAIL: ["#EA4335", '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M4 7.5l8 6 8-6"/>'],
+      MAPAS: ["#34A853", '<path d="M12 21s-6.8-5.6-6.8-10.2A6.8 6.8 0 0 1 12 3.6a6.8 6.8 0 0 1 6.8 6.8C18.8 15.4 12 21 12 21z"/><circle cx="12" cy="10.2" r="2.4" fill="#fff" stroke="none"/>'],
+      MAPS: ["#34A853", '<path d="M12 21s-6.8-5.6-6.8-10.2A6.8 6.8 0 0 1 12 3.6a6.8 6.8 0 0 1 6.8 6.8C18.8 15.4 12 21 12 21z"/><circle cx="12" cy="10.2" r="2.4" fill="#fff" stroke="none"/>']
+    };
+    function place(list, cls, isApp) {
       list.forEach(function (c) {
         var r = c.rect, d = document.createElement("div");
-        d.className = "cell " + cls; d.textContent = c.label;
+        d.className = "cell " + cls + (isApp ? " app" : "");
+        var ic = isApp && ICONS[c.label];
+        if (ic) {
+          d.innerHTML = '<span class="ic" style="background:' + ic[0] + '">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" ' +
+            'stroke-width="1.7" stroke-linecap="round">' + ic[1] +
+            "</svg></span><span></span>";
+          d.querySelector("span:last-child").textContent = c.label;
+        } else d.textContent = c.label;
         d.style.left = r[0] * 100 + "vw"; d.style.top = r[1] * 100 + "vh";
         d.style.width = r[2] * 100 + "vw"; d.style.height = r[3] * 100 + "vh";
         var f = document.createElement("span"); f.className = "fill";
@@ -367,12 +571,21 @@
         cellEls[c.label] = d;
       });
     }
-    place(layout.cells, "ph");
-    place(layout.funcs, "fn");
+    if (page === "apps") {
+      place(layout.apps || [], "ph", true);
+      place(layout.funcs_apps || [], "fn");
+    } else if (page === "teclado") {
+      place(layout.kb_sug || [], "sug");
+      place(layout.kb || [], "kb");
+      place(layout.funcs_kb || [], "fn");
+    } else {
+      place(layout.cells, "ph");
+      place(layout.funcs_main || layout.funcs, "fn");
+    }
     var b = layout.bar, bar = $("bar");
     bar.style.left = b[0] * 100 + "vw"; bar.style.top = b[1] * 100 + "vh";
     bar.style.width = b[2] * 100 + "vw"; bar.style.height = b[3] * 100 + "vh";
-    built = true;
+    built = true; curPage = page; builtKbV = window._kbV || 0;
   }
 
   var modalLatch = false; /* opened for the current open_settings epoch */
@@ -387,7 +600,7 @@
       inp.type = "text"; inp.value = phrases[label]; inp.dataset.label = label;
       lab.appendChild(inp); rows.appendChild(lab);
     });
-    var lang = st.voice_lang || window._lang || "es";
+    var lang = st.voice_lang || window._lang || "en";
     document.querySelectorAll('input[name=lang]').forEach(function (r) {
       r.checked = r.value === lang;
     });
@@ -404,9 +617,11 @@
       phrases[inp.dataset.label] = inp.value;
     });
     var lang = document.querySelector('input[name=lang]:checked');
-    window._lang = lang ? lang.value : "es";
+    /* NOTE: settings changes the TTS voice, never the session language. */
+    if (lang) window._voice = lang.value;
     fetch("/action", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "settings", voice_lang: window._lang, phrases: phrases }) });
+      body: JSON.stringify({ kind: "settings",
+        voice_lang: window._voice || window._lang, phrases: phrases }) });
     $("modal").classList.remove("on");
   };
 
@@ -417,8 +632,7 @@
     if (st.phase === "setup") return; /* splash/setup are client-driven */
     if (st.phase === "done") {
       show("done");
-      $("done-p").textContent = "Sesión terminada · " + (st.said || 0) +
-        " frases dichas. Ya puedes cerrar esta pestaña.";
+      $("done-p").textContent = T("done_count", st.said || 0);
       return;
     }
     if (st.phase === "guide") {
@@ -435,19 +649,19 @@
         el.style.width = Math.min(55, Math.max(10, 24 * (g.fw / ref[2]))) + "%";
         el.style.borderColor = g.inside ? "#34c759" : "#3a3a3c";
         if (g.stage === "sit") {
-          $("chip-face").textContent = "Midiendo tu postura…";
-          $("guide-msg").textContent = "ponte cómodo · así como te sientas siempre";
+          $("chip-face").textContent = T("g_sit_chip");
+          $("guide-msg").textContent = T("g_sit_msg");
         } else if (g.inside) {
-          $("chip-face").textContent = "Tu postura ✓";
-          $("guide-msg").textContent = "esa es tu postura · empezamos…";
+          $("chip-face").textContent = T("g_ok_chip");
+          $("guide-msg").textContent = T("g_ok_msg");
         } else {
-          $("chip-face").textContent = "Ajusta tu postura";
-          $("guide-msg").textContent = "vuelve a tu postura cómoda";
+          $("chip-face").textContent = T("g_fix_chip");
+          $("guide-msg").textContent = T("g_fix_msg");
         }
       } else {
         el.style.display = "none";
-        $("chip-face").textContent = "Buscando…";
-        $("guide-msg").textContent = "busca tu rostro…";
+        $("chip-face").textContent = T("g_lost_chip");
+        $("guide-msg").textContent = T("g_lost_msg");
       }
       $("chip-light").textContent = st.bright != null ? Math.round(st.bright) + "/255" : "—";
       $("chip-dist").textContent = st.dist ? "~" + Math.round(st.dist) + " cm" : "—";
@@ -458,7 +672,7 @@
       var c = st.calib || {};
       $("cspin").style.display = c.dot ? "none" : "block";
       $("pfill").style.width = (c.total ? (c.n / c.total) * 100 : 0) + "%";
-      $("ccount").textContent = "CALIBRACIÓN · " + (c.n || 0) + "/" + (c.total || 32);
+      $("ccount").textContent = T("calib_title") + " · " + (c.n || 0) + "/" + (c.total || 32);
       var d = $("dot");
       if (c.dot) {
         d.style.display = "flex";
@@ -467,13 +681,16 @@
         d.classList.toggle("hit", !!c.captured);
         d.textContent = c.captured ? "✓" : "";
       } else d.style.display = "none";
-      $("cfoot").textContent = st.busy ? "calibrando el mapa…"
-        : "mira el punto verde · rostro quieto";
+      $("cfoot").textContent = st.busy ? T("calib_busy")
+        : (c.msg || T("calib_foot"));
       return;
     }
     if (st.phase === "board") {
       show("board");
-      if (st.layout && !built) build(st.layout);
+      window._kbV = st.kb_v || 0;
+      if (st.layout && (!built || st.page !== curPage
+          || (st.kb_v || 0) !== builtKbV))
+        build(st.layout, st.page || "frases");
       /* gaze overlay (engine gaze, fractions of monitor) */
       if (st.gaze) {
         mx = st.gaze[0] * window.innerWidth;
@@ -484,6 +701,7 @@
         var elc = cellEls[label];
         var on = label === st.hl;
         elc.classList.toggle("hl", on);
+        elc.classList.toggle("armed", label === st.armed);
         elc.classList.toggle("dim", on && !st.covered);
         elc.querySelector(".fill").style.setProperty(
           "--p", on ? (st.hold_frac || 0) : 0);
@@ -491,10 +709,13 @@
       var sent = (st.sentence || []).join("  ·  ");
       var sEl = $("sent");
       if (st.face_msg) { sEl.textContent = st.face_msg; sEl.classList.add("warn"); }
-      else if (!st.covered) { sEl.textContent = "mirada fuera del área confiable"; sEl.classList.add("warn"); }
-      else { sEl.textContent = sent || "mira + hold para hablar…"; sEl.classList.remove("warn"); }
+      else if (st.page === "teclado") { sEl.textContent = (st.typed || "") + " ▌"; sEl.classList.remove("warn"); }
+      else if (st.launched) { sEl.textContent = T("bar_app", st.launched); sEl.classList.remove("warn"); }
+      else if (st.armed) { sEl.textContent = T("bar_armed", st.armed); sEl.classList.remove("warn"); }
+      else if (!st.covered) { sEl.textContent = T("bar_outside"); sEl.classList.add("warn"); }
+      else { sEl.textContent = sent || T("bar_hint"); sEl.classList.remove("warn"); }
       var stat = [];
-      if (st.bright != null) stat.push("luz " + Math.round(st.bright) + "/255");
+      if (st.bright != null) stat.push(T("stat_light") + " " + Math.round(st.bright) + "/255");
       if (st.dist) stat.push("~" + Math.round(st.dist) + "cm");
       $("bstat").textContent = stat.join(" · ");
       if (st.open_settings && !modalLatch) { openModal(st); modalLatch = true; }
