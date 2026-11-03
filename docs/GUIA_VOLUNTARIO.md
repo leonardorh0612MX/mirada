@@ -28,19 +28,21 @@ cara ya viene en el repo; el último comando solo verifica tu cámara.
 ## Prueba 1 — tablero de comunicación (~5 min)
 
 ```powershell
-.\.venv\Scripts\python.exe app\board.py
+.\.venv\Scripts\python.exe mirada.py
 ```
 
-- Si tienes varios monitores o cámaras, aparecen ventanas para elegir
-  con click: el monitor muestra una captura de cada pantalla, las
-  cámaras muestran vista en vivo (muévete para distinguirlas).
-- Mira los 32 puntos blancos sin moverte (calibración).
+- Primero eliges monitor, cámara e idioma (EN/ES) dentro de la ventana,
+  con vistas en vivo para distinguir las cámaras (muévete).
+- Ponte cómodo y sigue los puntos **moviendo cabeza y ojos juntos**,
+  como miras normalmente (calibración).
 - Después: mira una palabra y **cierra los ojos ~medio segundo** para
   seleccionarla. Sonará la frase en voz alta.
-- Intenta decir las 8 palabras: SI, NO, AGUA, BAÑO, AYUDA, GRACIAS,
-  LLAMAR, DOLOR (en el orden que quieras).
-- Para salir: mira QUIT (arriba al centro) y cierra los ojos, o Shift+Q.
-- Al terminar imprime `session: data\board-...` y `done: said=[...]`.
+- Intenta decir las 8 palabras en el orden que quieras (YES, NO, WATER,
+  BATHROOM, HELP, THANKS, COME, PAIN en inglés).
+- Si en algún momento tienes que mirar a otro lado para atinarle a una
+  celda, pulsa **R** para recalibrar en ese momento, no después.
+- Para salir: mira QUIT y cierra los ojos, o Shift+Q.
+- Al terminar imprime `session: data\web-...` y `done: said=[...]`.
   **Copia todo el texto de la terminal** y guárdalo.
 
 ## Prueba 2 (opcional) — sesión de estudio (~15 min)
@@ -53,14 +55,15 @@ No necesitas saber los números de tu cámara o monitor: si solo hay uno
 de cada uno se usan solos, y si hay varios aparece una ventana con vista
 en vivo para elegir con click. Calibra con ESPACIO en cada punto y luego
 estudia/trabaja normal 15 min. Cada 2 min aparece un punto: míralo fijo
-10 segundos.
+10 segundos. Importante: videos en ventana, **nunca en pantalla
+completa** (en fullscreen la captura sale negra y la sesión no sirve).
 
 ## Qué devolver
 
 Manda de regreso **solo** estos dos elementos (nada más):
 
-1. La carpeta de tu sesión: `data\board-...` o `data\sess-...`
-   (contiene eventos anónimos + recortes de ojos + capturas de pantalla).
+1. La carpeta de tu sesión: `data\web-...` (tablero) o `data\sess-...`
+   (estudio). Contiene eventos anónimos + recortes de ojos + capturas.
 2. El texto copiado de la terminal.
 
 No modifiques ningún archivo `.py`. Si algo truena, manda el error tal cual:

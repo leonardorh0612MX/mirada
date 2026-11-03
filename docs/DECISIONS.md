@@ -155,3 +155,21 @@ Format per decision: choice, alternatives, rationale, status. Status is Proposed
 - Correction: the WebView2 ring painted a white square despite transparent=True, so the in-app cursor is now a Tk overlay (Win32 -transparentcolor + click-through): guaranteed chromeless on any runtime. The dock window gets the missing transparent=True flag plus letterspaced-cap typography. If the dock still shows white live, it goes Tk too.
 - Correction: resting on a target was near-impossible because the live point wanders - AppDwell now clicks on the rest centroid (running mean, radius 130 px), the engine smooths harder in app mode (alpha 0.15 vs 0.4), and the ring draws a white fill arc so the builder can see the charge and hold through it. Dwell 1.0 s, refractory 2.0 s.
 - Status: Accepted, pending live. 196 tests OK, page script node-checked. Live check: setup shows EN default; open YouTube, confirm zero-background ring with charging arc; rest on a video (one click at the centroid); switch to ES once and confirm full translation.
+
+## D23. Fusion: coarse labels + posture guardrail (Nov 2)
+
+- Correction: the first volunteer session died from a poisoning spiral - a stuck highlight fired WATER 3x in 8 s, each "certain" anchor applied with 220-245 px residuals until bias hit 400 px and the board became unusable. Enrollment was healthy (steadier than the builder's), so the map was born fine and learned itself to death.
+- Choice, three parts (corrector/fusion.py): (1) selections carry tile-size uncertainty (sigma_px = tile half-diagonal scales the RLS step: huge cells teach slowly, small keys faster; a 2-3 cm-off tile centre no longer jumps the map); (2) same-label gaze anchors cool down 2.5 s - speech still fires, only the teaching waits; (3) a PostureGuard freezes all anchor learning when live features drift beyond 3x the enrollment spread for 3 s, shows "you moved - press R", and resumes on return. Thresholds from real data (spread 0.157, freeze > 0.47: far above frame noise ~0.05).
+- Also: sessions now log a setup event (camera, monitor, rect, lang) - the volunteer diagnosis needed it and meta was empty.
+- Status: Accepted, pending live. 204 tests OK. Live check: hold one cell repeatedly (expect "cooldown" verdicts, map stays sane); lean far back for 4 s (expect freeze prompt + "posture drifted" console line); return (expect resume).
+
+## D24. Baseten points are 0-1000 normalized, not pixels (Nov 2)
+
+- Correction: the first Baseten anchor batches looked weak (off-screen points, replay C neutral). Overlaying the reported points on the volunteer screenshots showed concepts landing right but points systematically off - and rescaling by W/1000, H/1000 produced three exact bullseyes (taskbar clock, Firefox icon, cube centre). Spark Open ignores the "pixel coordinates" instruction; Meta Spark honors it. The Baseten path now rescales by true image size (mock-tested). Lesson: a new backend needs one visual overlay check before any replay verdict.
+- Status: Accepted. 205 tests OK. Invalidates the "Baseten points are weak" reading of sess-20261102-163519 - both Baseten batches must be regenerated before judging.
+
+## D25. Floating chrome goes full Tk: tiles + ghost fade (Nov 2)
+
+- Correction: the dock's WebView2 window still painted a white slab despite every CSS/flag attempt, and it popped over launched apps intrusively. All floating chrome is now Tk: two PIL-rendered glass tiles as separate windows (the gap between them stays clickable), mouse bindings for the caregiver, gaze dwell zones from tile_rects. Render verified headless (rounded, transparent corners); Segoe UI lacks U+2301 so the keyboard tile carries no glyph.
+- Choice: ghost fade - tiles rest at 0.45 alpha and solidify only when the gaze comes within ~260 px, so they sit over the app without covering it. Smaller too (2x 200x124 vs the 440x210 slab). Tiles exist only while an app is launched.
+- Status: Accepted, pending live. 206 tests OK. Live check: open YouTube, confirm two floating glass tiles with zero white box, ghost at rest, solid on approach, MIRADA returns, TECLADO opens the keyboard.

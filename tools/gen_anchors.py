@@ -8,7 +8,9 @@ screens D is sparse by design; C carries the strategy.)
 Output: anchors_offline.json: {"C": [...], "D": [...]} lists of
 [t_mono, x, y, confidence, source].
 Usage (needs network + .env):
-  .\\.venv\\Scripts\\python.exe tools\\gen_anchors.py data\\sess-XXXX
+  .\\.venv\\Scripts\\python.exe tools\\gen_anchors.py data\\sess-XXXX [--backend meta|baseten]
+Baseten spends Baseten credits (Muse Spark Open) instead of Meta credits
+for the C proposals; D stays empty (no SAM on Baseten).
 """
 
 import base64
@@ -66,12 +68,30 @@ def sam_lane(concept, png_bytes):
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("usage: gen_anchors.py <session_dir>")
+    argv = sys.argv[1:]
+    backend, spath, skip_next = "meta", None, False
+    for i, a in enumerate(argv):
+        if skip_next:
+            skip_next = False
+            continue
+        if a.startswith("--backend="):
+            backend = a.split("=", 1)[1].strip().lower()
+        elif a == "--backend" and i + 1 < len(argv):
+            backend = argv[i + 1].strip().lower()
+            skip_next = True
+        elif not a.startswith("--") and spath is None:
+            spath = a
+    if spath is None:
+        print("usage: gen_anchors.py <session_dir> [--backend meta|baseten]")
         return 2
-    spath = sys.argv[1]
+    if backend not in ("meta", "baseten"):
+        print(f"unknown backend {backend!r}: use meta or baseten")
+        return 2
+    if backend == "baseten":
+        os.environ["ANCHOR_BACKEND"] = "baseten"
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     load_dotenv(os.path.join(repo, ".env"))
+    print(f"backend: {spark.backend()}")
 
     shots, monitor_rect = [], (0, 0)
     with open(os.path.join(spath, "events.jsonl"), encoding="utf-8") as fh:
@@ -112,6 +132,11 @@ def main():
         concept, conf, _, px, py = prop
         ax, ay = to_virtual(px, py)
         out["C"].append([e["t_mono"], ax, ay, conf, "spark"])
+        if spark.backend() == "baseten":
+            print(f"t={e['t_mono']:.0f} {concept!r} conf={conf:.2f} "
+                  f"C=({ax:.0f},{ay:.0f}) D: skipped (no SAM on baseten) "
+                  f"secs={time.perf_counter() - t0:.1f}")
+            continue
         try:
             lane = sam_lane(concept, png)
             records = parse_lane(lane)

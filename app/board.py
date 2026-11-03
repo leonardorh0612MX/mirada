@@ -24,6 +24,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.camselect import resolve_camera, resolve_monitor  # noqa: E402
 from app.deskkeys import grid_keys, place  # noqa: E402
 from app.i18n import cells_for_lang, norm_lang, s  # noqa: E402
+from corrector.fusion import (PostureGuard, SelectionCooldown,  # noqa: E402
+                              enrollment_spread)
 from app.inject import shift_q_pressed  # noqa: E402
 from app.board_config import load_config, save_config  # noqa: E402
 from app.keyboard_layout import hit_key  # noqa: E402
@@ -187,6 +189,9 @@ def main():
     session = new_session(os.path.join(repo, "data"),
                           time.strftime("board-%Y%m%d-%H%M%S"), meta={})
     print(f"session: {session}")
+    append_event(session, "setup", {"camera": cam, "monitor": mon,
+                                    "rect": [mleft, mtop, mw, mh],
+                                    "lang": lang})
 
     cap = cv2.VideoCapture(cam, cv2.CAP_DSHOW)
     if not cap.isOpened():
@@ -376,6 +381,8 @@ def main():
         return matrix, means, samples
 
     corrector, blink, hull = [None], [None], [None]
+    guard, frozen = [None], [False]
+    cooldown = SelectionCooldown(2.5)
 
     def refit_all():
         matrix, means, samples = refit()
@@ -397,6 +404,10 @@ def main():
         corrector[0] = BiasCorrector(lambda f: map_to_screen(f, matrix),
                                      means, certain_bias_only=True,
                                      trust_px=15.0)
+        guard[0] = PostureGuard(enrollment_spread(samples, means))
+        frozen[0] = False
+        print(f"posture spread={guard[0].limit / 3.0:.4f} "
+              f"freeze>{guard[0].limit:.4f}")
         hull[0] = convex_hull([(gx, gy) for _, gx, gy in samples])
         ear_open.sort()
         med = ear_open[len(ear_open) // 2] if ear_open else 0.30
@@ -468,17 +479,23 @@ def main():
         state["sentence"].append(phrase)
         verdict = "no_anchor"
         if source == "gaze":
-            pre = [f for t, f in feat_history if t <= now - 0.7]
-            if pre:
-                for k in cells:
-                    if k["label"] == target:
-                        x1, y1, x2, y2 = k["rect"]
-                        stt, info = corrector[0].update(
-                            pre[-1],
-                            ((x1 + x2) / 2 + mleft, (y1 + y2) / 2 + mtop),
-                            certain=True)
-                        verdict = f"{stt}:{info.get('residual', 0):.0f}"
-                        break
+            if frozen[0]:
+                verdict = "frozen"
+            elif not cooldown.allow(target, now):
+                verdict = "cooldown"
+            else:
+                pre = [f for t, f in feat_history if t <= now - 0.7]
+                if pre:
+                    for k in cells:
+                        if k["label"] == target:
+                            x1, y1, x2, y2 = k["rect"]
+                            sigma = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5 / 2.0
+                            stt, info = corrector[0].update(
+                                pre[-1],
+                                ((x1 + x2) / 2 + mleft, (y1 + y2) / 2 + mtop),
+                                certain=True, sigma_px=sigma)
+                            verdict = f"{stt}:{info.get('residual', 0):.0f}"
+                            break
         append_event(session, "selection",
                      {"key": target, "phrase": phrase, "ear": ear,
                       "anchor": verdict, "source": source})
@@ -675,6 +692,16 @@ def main():
                 feat_window.pop(0)
             avg = [sorted(f[j] for f in feat_window)[len(feat_window) // 2]
                    for j in range(len(feats))]
+            if guard[0] is not None:
+                d = math.dist(avg, corrector[0].means)
+                was = frozen[0]
+                frozen[0] = guard[0].update(d, now)
+                if frozen[0] and not was:
+                    print(f"posture drifted (dist={d:.4f}) - "
+                          f"learning frozen, press R")
+                    append_event(session, "posture_freeze", {"dist": d})
+                elif was and not frozen[0]:
+                    print("posture recovered - learning resumed")
             px, py = corrector[0].predict(avg)
             # Never return early on jumps: a "select" verdict for this frame
             # would be dropped while the detector already fired (here: holds
@@ -704,6 +731,8 @@ def main():
                                         margin=40.0)
             last_hl[0] = hit_key(cells + funcs, smooth["x"] - mleft,
                                  smooth["y"] - mtop)
+        if frozen[0] and not state["face_msg"]:
+            state["face_msg"] = s(lang, "recal_prompt")
         hl = last_hl[0]
         kb_history.append((now, hl))
         while len(kb_history) > 90:

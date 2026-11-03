@@ -11,6 +11,7 @@ import argparse
 import base64
 import io
 import json
+import math
 import os
 import queue
 import sys
@@ -27,6 +28,8 @@ from app.board import (PHRASE, enrollment_plan,  # noqa: E402
 from app.board_config import load_config, save_config  # noqa: E402
 from app.i18n import (cells_for_lang, funcs_for_lang, norm_lang,  # noqa: E402
                       s)
+from corrector.fusion import (PostureGuard, SelectionCooldown,  # noqa: E402
+                              enrollment_spread)
 from app.camselect import available_cameras, available_monitors  # noqa: E402
 from app.deskkeys import grid_keys  # noqa: E402
 from app.inject import click_at, send_text, shift_q_pressed  # noqa: E402
@@ -141,46 +144,6 @@ class Handler(BaseHTTPRequestHandler):
             path = os.path.join(REPO, "site", "board.html")
             with open(path, "rb") as fh:
                 body = fh.read()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-        elif self.path == "/back":
-            # Floating dock inside apps: dark glass tiles, letterspaced
-            # caps. Labels follow the setup language (MIRADA is brand).
-            lang = STATE.get("lang", "en")
-            back_sub = s(lang, "back_sub")
-            kb_main = s(lang, "kb_main")
-            kb_sub = s(lang, "kb_sub")
-            font = ("font-family:'Segoe UI Variable Display','Segoe UI',"
-                    "system-ui,sans-serif;")
-            body = ("<!DOCTYPE html><meta charset=utf-8><title>Mirada</title>"
-                    "<style>html,body{height:100%;margin:0;background:transparent;"
-                    "display:flex;gap:14px;padding:10px;box-sizing:border-box}"
-                    "button{flex:1;border:0;border-radius:34px;color:#f5f5f7;"
-                    "font-weight:600;font-size:30px;letter-spacing:4px;" + font +
-                    "cursor:pointer;"
-                    "box-shadow:0 16px 40px rgba(0,0,0,.55),"
-                    "inset 0 2px 3px rgba(255,255,255,.35),"
-                    "inset 0 -10px 22px rgba(0,0,0,.5);"
-                    "text-shadow:0 2px 12px rgba(0,0,0,.8)}"
-                    ".b1{background:radial-gradient(circle at 30% 22%,"
-                    "rgba(255,255,255,.28),rgba(255,255,255,0) 55%),"
-                    "linear-gradient(160deg,#333336,#0c0c0e)}"
-                    ".b2{background:radial-gradient(circle at 30% 22%,"
-                    "rgba(255,255,255,.32),rgba(255,255,255,0) 55%),"
-                    "linear-gradient(160deg,#3a3a3e,#141416)}"
-                    "button:active{transform:scale(.96)}"
-                    "small{display:block;font-weight:600;font-size:12px;" + font +
-                    "opacity:.7;margin-top:8px;letter-spacing:6px}</style>"
-                    "<button class=b1 onclick=\"post('back')\">"
-                    "&#8592; MIRADA<small>" + back_sub + "</small></button>"
-                    "<button class=b2 onclick=\"post('keyboard')\">"
-                    "&#9000; " + kb_main + "<small>" + kb_sub + "</small></button>"
-                    "<script>function post(k){fetch('/action',{method:'POST',"
-                    "headers:{'Content-Type':'application/json'},"
-                    "body:JSON.stringify({kind:k})})}</script>").encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -362,6 +325,9 @@ def engine(notify_done):
     if mon_idx >= len(monitors):
         mon_idx = 0
     mleft, mtop, mw, mh = monitors[mon_idx]
+    append_event(session, "setup", {"camera": cam_idx, "monitor": mon_idx,
+                                    "rect": [mleft, mtop, mw, mh],
+                                    "lang": lang})
     _py0, _py1 = phrase_area(mh)
     cells = grid_keys([c[0] for c in lang_cells], 2, 4, 16, _py0, mw - 32,
                       _py1 - _py0)
@@ -470,6 +436,8 @@ def engine(notify_done):
 
     calib, ear_open = [], []
     corrector, blink, hull = [None], [None], [None]
+    guard, frozen = [None], [False]
+    cooldown = SelectionCooldown(2.5)
 
     def calibrate():
         del calib[:], ear_open[:]
@@ -572,6 +540,10 @@ def engine(notify_done):
         corrector[0] = BiasCorrector(lambda f: map_to_screen(f, matrix),
                                      means, certain_bias_only=True,
                                      trust_px=15.0)
+        guard[0] = PostureGuard(enrollment_spread(samples, means))
+        frozen[0] = False
+        print(f"posture spread={guard[0].limit / 3.0:.4f} "
+              f"freeze>{guard[0].limit:.4f}")
         hull[0] = convex_hull([(gx, gy) for _, gx, gy in samples])
         ear_open.sort()
         med = ear_open[len(ear_open) // 2] if ear_open else 0.30
@@ -625,16 +597,21 @@ def engine(notify_done):
         state["started"] = time.perf_counter()
 
     def apply_anchor(label, rects, now):
-        """Confirmed selection = exact anchor at the tile centre."""
+        """Confirmed selection = coarse anchor (tile centre + size)."""
+        if frozen[0]:
+            return "frozen"  # posture left the regime: don't learn here
+        if not cooldown.allow(label, now):
+            return "cooldown"  # stuck repeat: speak, but don't teach
         pre = [f for t, f in feat_history if t <= now - 0.7]
         if not pre:
             return "no_anchor"
         for k in rects:
             if k["label"] == label:
                 x1, y1, x2, y2 = k["rect"]
+                sigma = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5 / 2.0
                 stt, info = corrector[0].update(
                     pre[-1], ((x1 + x2) / 2 + mleft, (y1 + y2) / 2 + mtop),
-                    certain=True)
+                    certain=True, sigma_px=sigma)
                 return f"{stt}:{info.get('residual', 0):.0f}"
         return "no_anchor"
 
@@ -835,6 +812,16 @@ def engine(notify_done):
                 feat_window.pop(0)
             avg = [sorted(f[j] for f in feat_window)[len(feat_window) // 2]
                    for j in range(len(feats))]
+            if guard[0] is not None:
+                d = math.dist(avg, corrector[0].means)
+                was = frozen[0]
+                frozen[0] = guard[0].update(d, now)
+                if frozen[0] and not was:
+                    print(f"posture drifted (dist={d:.4f}) - "
+                          f"learning frozen, press R")
+                    append_event(session, "posture_freeze", {"dist": d})
+                elif was and not frozen[0]:
+                    print("posture recovered - learning resumed")
             px, py = corrector[0].predict(avg)
             if smooth["x"] is None:
                 smooth["x"], smooth["y"] = px, py
@@ -864,6 +851,8 @@ def engine(notify_done):
             last_hl[0] = hit_key(active_cells() + active_funcs(),
                                  smooth["x"] - mleft,
                                  smooth["y"] - mtop)
+        if frozen[0] and not face_msg:
+            face_msg = s(lang, "recal_prompt")
         hl = last_hl[0]
         kb_history.append((now, hl))
         while len(kb_history) > 90:
@@ -879,9 +868,10 @@ def engine(notify_done):
             if smooth["x"] is not None:
                 rel_x = smooth["x"] - mleft
                 rel_y = smooth["y"] - mtop
-                # Floating dock: 440x210 at (mw-476, 16); the watcher
-                # owns clicks there, with a 20 px left margin.
-                if rel_x > mw - 496 and rel_y < 226:
+                # Floating dock: two 200x124 tiles at top-right
+                # (bbox mw-428..mw, 16..140; see tile_rects). The watcher
+                # owns that corner, with a 20 px margin.
+                if rel_x > mw - 448 and rel_y < 140:
                     app_dwell.reset()
                 elif app_dwell.update(smooth["x"], smooth["y"], now):
                     cx, cy = app_dwell.centroid

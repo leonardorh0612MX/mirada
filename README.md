@@ -1,126 +1,130 @@
-# Mirada
+# Mirada — look + hold to speak
 
-Webcam gaze tracking that stays accurate without manual recalibration.
+A gaze communication board that runs on an ordinary webcam. No headset, no
+eye tracker, no per-frame cloud calls: look at a cell, close your eyes for
+~0.4 s, and the computer speaks. Built for the Meta Global AI Developer
+Hackathon (accessibility track).
 
-A local gaze model drifts within minutes as posture and light change.
-Mirada corrects it with **semantic anchors**: moments where screen
-context makes the gaze target nearly certain (a deliberate hold on a
-cell, the typing caret, a click target). A Meta multimodal model
-(Muse Spark) proposes what the user is looking at; SAM 3.1 localizes
-it. Local recursive least squares applies the correction. The large
-models are never in the fast loop.
+Demo video: recorded Nov 3, linked here on submission day.
 
-Primary use case: accessibility — using a computer by gaze for 15+
-minutes without recalibrating, on a $0 webcam.
+## Why it's special
 
-## Try the demo (Windows 11, PowerShell)
+- **Zero hardware beyond a webcam.** A $30 camera replaces a $5,000
+  dedicated eye tracker for phrase-level communication.
+- **It corrects its own drift.** Every selection you confirm becomes a
+  semantic anchor that re-biases the gaze map (small online correction,
+  trust-capped); a posture guard freezes learning when you leave your
+  calibrated pose instead of learning garbage.
+- **It works inside real apps.** An APPS page launches Discord, the
+  browser, YouTube and more with huge tiles; your gaze then becomes the
+  mouse (rest-to-click with a charging ring), a floating dock takes you
+  back, and an on-screen keyboard types into any field.
+- **Private by construction.** Gaze, calibration and speech run fully
+  offline on your machine. Cloud models touch only the research tooling,
+  never the live loop.
+
+## 60 seconds to your first sentence (Windows 11, PowerShell)
 
 Prerequisites: Windows 10/11, a webcam, and Python 3.11 or 3.12 from
 [python.org](https://www.python.org/downloads/) (check "Add python.exe to
-PATH" during install; the Microsoft Store Python lacks pip support for
-this workflow). No API key needed for the demo — the board runs fully
-offline. Keys are only required for the research tools below.
+PATH"; the Microsoft Store Python lacks pip support for this workflow).
+No API key needed — the board runs fully offline.
 
 ```powershell
 cd C:\path\to\mirada
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe tools\t3_mediapipe_probe.py   # checks camera + face model
+.\.venv\Scripts\python.exe mirada.py
 ```
 
-Notes: the `.venv` folder is never shipped with the repo — every machine
-creates its own with the commands above. There is no need to run
-`Activate.ps1` (it also trips PowerShell execution policies); all
-commands call the environment's Python directly. The face model
-(`data/face_landmarker.task`) ships in the repo, nothing downloads at
-first run.
+Notes: the `.venv` folder is never shipped — every machine creates its own
+with the commands above, and there is no need to run `Activate.ps1` (it
+trips PowerShell execution policies); all commands call the project's
+Python directly. The face model (`data/face_landmarker.task`) ships in the
+repo, so nothing downloads at first run.
 
-Then pick your surface:
+What happens next, inside the window:
 
-```powershell
-.\.venv\Scripts\python.exe app\board_app.py    # communication board, native app window (recommended)
-.\.venv\Scripts\python.exe app\beta.py         # gaze keyboard: type with your eyes (appearance map)
-.\.venv\Scripts\python.exe app\board_web.py    # same board in a browser tab (fallback)
-.\.venv\Scripts\python.exe app\board.py        # same board, Tkinter (fallback)
-```
+1. Pick your screen, camera and language (EN/ES) with live previews.
+2. Get comfortable and follow the dots with head AND eyes together.
+3. Look at YES, close your eyes briefly — it speaks. Try WATER, THANKS,
+   then the KEYBOARD page and the APPS page.
 
-In the board: choose monitor and camera with live previews, sit
-naturally (the ceremony learns YOUR comfortable pose), follow the
-calibration dots including the head-turn prompts, then hold your gaze
-~0.4 s on a cell to speak it. APPS opens huge tiles that launch real
-applications (two holds to confirm); a floating "← MIRADA" circle
-brings the board back. QUIT by gaze, or Shift+Q anywhere.
+Caregiver mouse always works alongside gaze. Shift+Q quits anywhere.
 
-For the science workflow (needs keys: copy `.env.example` to `.env`
-and fill `MODEL_API_KEY`, plus `BASETEN_API_KEY` for the Baseten
-backend):
+## What you can do with it
+
+- **Speak in seconds**: 8 huge cells (YES/NO/WATER/BATHROOM/HELP/THANKS/
+  COME/PAIN) with offline speech, editable phrases, EN/ES voices.
+- **Type anything**: a full gaze keyboard with word completion and a SEND
+  key that delivers the text into the focused app.
+- **Use your computer**: launch apps from giant tiles (double-hold to
+  confirm), click by resting your gaze, return anytime with the floating
+  MIRADA tile — ghosted until you look at it.
+- **Stay calibrated**: selections quietly re-anchor the map; if you
+  slouch out of your pose it tells you to press R instead of dying
+  silently.
+
+## Under the hood (30 seconds)
+
+Local MediaPipe landmarks (~30 fps) feed a calibrated gaze map; a tiny
+bias-only recursive corrector absorbs drift from your confirmed
+selections; tile-size uncertainty, a repeat cooldown and a posture
+guardrail keep bad labels from poisoning it. Start here:
+
+- `docs/ARCHITECTURE.md` — modules, data flow, interfaces.
+- `docs/DECISIONS.md` — every technical decision with alternatives (D1–D25).
+- `docs/RESEARCH.md` — verified prior art (WebGazer, Aria, Online-EYE…).
+
+## The science
+
+Recorded sessions replay offline under competing strategies (A: calibrate
+once, B: WebGazer-style clicks, C: semantic anchors), scored against
+fixation dots. First two-participant result: consensus anchors cut mean
+error 406 → 397 px (−2.2%) on the volunteer's session; the same rig
+documents drift exploding 63 → 941 px in 15 minutes without correction.
+Protocol, metrics and honest verdicts: `docs/EVAL.md`. Paper draft:
+`docs/PAPER_DRAFT.md`.
+
+Research tooling needs keys (copy `.env.example` to `.env`, fill
+`MODEL_API_KEY`, plus `BASETEN_API_KEY` for the Baseten backend):
 
 ```powershell
 .\.venv\Scripts\python.exe tools\record_session.py --seconds 900
-# Camera and monitor are auto-detected (a chooser window appears if
-# several exist). Override only if needed: --camera 0 --monitor 1
-.\.venv\Scripts\python.exe tools\replay_v2.py data\sess-YYYYMMDD-HHMMSS
-.\.venv\Scripts\python.exe tools\t14_figure.py        # A/B/C/D figure + table
-.\.venv\Scripts\python.exe tools\t20_appearance.py    # appearance vs geometric, pooled
-.\.venv\Scripts\python.exe tools\t27_residual.py      # population residual (negative result)
+# Camera/monitor auto-detected (a chooser appears if several exist).
+.\.venv\Scripts\python.exe tools\gen_anchors.py data\sess-<date> --backend baseten
+.\.venv\Scripts\python.exe tools\replay_v2.py data\sess-<date>
+```
+
+## Repo map
+
+| Run this | What it is |
+|---|---|
+| `mirada.py` | **The app.** Native board window: phrases, keyboard, apps, eye-mouse. Start here. |
+| `app/board.py` | Same board as plain Tkinter. Fallback if the native window misbehaves. |
+| `app/beta.py` | Gaze-typing trainer (type HOLA). Measures raw typing, not communication. |
+| `app/desktop.py` | Early fine-cursor experiment. Superseded by the in-app eye mouse. |
+| `app/board_web.py` | The engine `mirada.py` serves (web UI). Run directly for browser mode. |
+
+Core (imported, not run): `gaze/` landmarks→features, `corrector/`
+online bias + fusion guards, `anchors/` Spark/SAM proposals, `eval/`
+replay strategies, `recorder/` session logs.
+
+## Tests
+
+```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
-## Measured results (Nov 1, builder sessions, replayed identically)
+206 tests, all green. Covers calibration math, blink/hold detection,
+fusion guards, language tables, dock geometry, keyboard injection,
+config round-trips and replay determinism.
 
-- **The calibration fit was the biggest bug.** Standardizing it (fixed
-  physical scales, group ridge, factorial gaze×posture enrollment)
-  cut replay error **−58 %** (1295 → 546 px) on identical data.
-- **Appearance beats geometry.** Per-session ridge over eye-crop
-  pixels: **237 vs 427 px** leave-one-dot-out (n=373, −44 %). It is
-  the keyboard default; trained fresh each session in ~90 s and
-  discarded — no stored biometrics.
-- **Semantic anchors: modest on free screens.** Batch-of-4 Huber
-  updates give −4 % mean error (−6 % late-session); the pre-registered
-  consensus gate applied zero anchors and is reported as a failed
-  design (docs/EVAL.md, T14 verdict). Inside controlled apps, anchors
-  are exact and corrections are large.
-- **Population residual does not transfer** across days (LOSO −1 %):
-  residuals belong to the day's posture/lighting regime. Documented
-  negative result (T27).
-- Live task proof: gaze keyboard typed HOLA in **33–36 s, 0 errors**;
-  communication board: 12 selections in 67 s, gaze-only quit.
+## Volunteers and credits
 
-## How it works
-
-- `gaze/`: MediaPipe landmarks → geometric features → screen point;
-  appearance model over eye crops; coverage hull; saccade gate.
-- `corrector/`: 4-parameter bias/head-drift RLS over the frozen base
-  map. Anchors carry certainty: deliberate holds apply directly
-  (bias-only on the board), uncertain proposals need consensus.
-- `anchors/`: Spark names the attended element (Responses API);
-  SAM 3.1 segments it; mask centroid is the anchor. Degrades to
-  clicks, then to calibration-only.
-- `recorder/`: append-only monotonic session logs (features, events,
-  screenshots with monitor provenance, ground-truth dots every 2 min).
-  Every strategy comparison replays identical data.
-- `eval/`: A (calibration only), B (clicks), C (semantic), D (+SAM):
-  error over time, drift slope, anchor precision and harm rate.
-
-## Honest limitations
-
-- One participant so far; volunteer sessions are the missing evidence.
-  Per-session results are reported, never silently pooled.
-- Posture outside the enrollment family still breaks the base map;
-  anchors correct bias, not a warped map.
-- SAM localizes UI text poorly on free-form screens; Spark anchors
-  need capturable screen content (fullscreen video yields black
-  frames and no anchors).
-- Webcam gaze starts at several degrees of error. This project fights
-  drift and cost, not the physics of a $0 sensor.
-
-## Docs
-
-- [PAPER_DRAFT.md](docs/PAPER_DRAFT.md) — paper draft with the full
-  results and reproduction commands.
-- [EVAL.md](docs/EVAL.md) — protocol fixed in advance, and the
-  verdicts including the negative ones.
-- [DECISIONS.md](docs/DECISIONS.md) — every technical decision with
-  alternatives (D1–D22).
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md), [RESEARCH.md](docs/RESEARCH.md),
-  [TASKS.md](docs/TASKS.md), [GUIA_VOLUNTARIO.md](docs/GUIA_VOLUNTARIO.md).
+- Can you spare 20 minutes in front of a webcam? `docs/GUIA_VOLUNTARIO.md`
+  (setup + what to send back), `docs/GUIA_PARTICIPANTE.md` (the session
+  script). Sessions stay on your machine unless you share them.
+- Built with Meta models: `muse-spark-1.3` (anchor proposals),
+  `muse-wonder-1.0` (architecture review), `sam-3.1` (segmentation),
+  `muse-image-1.0` (artwork), plus `muse-spark-open` weights via Baseten.

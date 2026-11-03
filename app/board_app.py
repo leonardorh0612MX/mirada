@@ -42,11 +42,23 @@ def monitor_rect(monitors, idx):
     return monitors[max(0, min(idx, len(monitors) - 1))]
 
 
+TILE_W, TILE_H, TILE_GAP, DOCK_MARGIN = 200, 124, 12, 16
+
+
 def overlay_rect(mw, mh):
-    """Floating-buttons rect, monitor-relative: top-right, over the
-    display-only bar so it never covers an interactive cell. Left half
-    is MIRADA (back), right half TECLADO. Pure (tested)."""
-    return (mw - 476, 16, 440, 210)
+    """Floating-dock bounding box, monitor-relative: top-right, over the
+    display-only bar so it never covers an interactive cell. Pure (tested)."""
+    return (mw - DOCK_MARGIN - (TILE_W * 2 + TILE_GAP), DOCK_MARGIN,
+            TILE_W * 2 + TILE_GAP, TILE_H)
+
+
+def tile_rects(mw, mh):
+    """(back, kb) tile rects inside overlay_rect. The left tile returns
+    to the board, the right tile opens the keyboard. Each tile is its
+    own window so the gap between them stays clickable. Pure (tested)."""
+    rx, ry, _rw, _rh = overlay_rect(mw, mh)
+    return [(rx, ry, TILE_W, TILE_H),
+            (rx + TILE_W + TILE_GAP, ry, TILE_W, TILE_H)]
 
 
 def in_rect(x, y, rect):
@@ -55,46 +67,124 @@ def in_rect(x, y, rect):
     return rx <= x <= rx + rw and ry <= y <= ry + rh
 
 
-class GazeRing:
-    """Transparent click-through gaze cursor (Tk overlay, Win32).
+def render_tile(main, sub, mark=""):
+    """Glass dock tile as an RGBA image (TILE_W x TILE_H). Pure (tested).
 
-    The WebView2 ring window painted an opaque white square behind the
-    ring on the builder's machine despite transparent=True, so the
-    cursor is a Tk overlay instead: -transparentcolor punches the real
-    window shape and WS_EX_TRANSPARENT lets clicks pass through to the
-    app below. Draws the amber ring, the core dot and the dwell fill
-    arc (frac 0..1: white arc grows as the click charges).
-    Owned end-to-end by the watcher's thread; update() pumps Tk.
+    Rounded dark gradient, top gloss, letterspaced caps, transparent
+    corners - rendered at 2x and downscaled for crisp text. Shown on a
+    -transparentcolor window, so zero rectangle bleeds onto the app.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    S = 2
+    W, H = TILE_W * S, TILE_H * S
+    rgb = Image.new("RGB", (W, H), (0, 0, 0))
+    d = ImageDraw.Draw(rgb)
+    top, bot = (64, 64, 68), (14, 14, 16)
+    for y in range(H):
+        f = y / max(H - 1, 1)
+        d.line([(0, y), (W, y)],
+               fill=tuple(int(top[i] + (bot[i] - top[i]) * f)
+                          for i in range(3)))
+    d.rounded_rectangle([2, 2, W - 3, H - 3], radius=56,
+                        outline=(255, 255, 255, 40), width=3)
+    d.line([(44, 18), (W - 44, 18)], fill=(255, 255, 255, 36), width=7)
+
+    def _font(name, size):
+        try:
+            return ImageFont.truetype(name, size * S), True
+        except Exception:
+            return ImageFont.load_default(), False
+
+    f_main, ttf = _font("segoeuib.ttf", 21)
+    f_sub, _ = _font("segoeui.ttf", 11)
+    if mark and not ttf:
+        mark = ""  # fallback font lacks the glyph; plain caps instead
+
+    def _tracked(cy, text, font, tracking, fill):
+        widths = [d.textlength(ch, font=font) for ch in text]
+        x = (W - (sum(widths) + tracking * max(len(text) - 1, 0))) / 2
+        for ch, wch in zip(text, widths):
+            d.text((x, cy), ch, font=font, fill=fill)
+            x += wch + tracking
+
+    _tracked(H * 0.30, (mark + " " + main).strip(), f_main, 7 * S,
+             (245, 245, 247))
+    _tracked(H * 0.62, sub, f_sub, 9 * S, (176, 176, 181))
+    mask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, W - 1, H - 1],
+                                           radius=60, fill=255)
+    img = rgb.convert("RGBA")
+    img.putalpha(mask)
+    return img.resize((TILE_W, TILE_H), Image.LANCZOS)
+
+
+class Overlay:
+    """Ring cursor + floating dock as Tk transparent overlays (Win32).
+
+    WebView2 windows painted opaque white rectangles behind both the
+    ring and the dock despite transparent=True, so all floating chrome
+    lives here: -transparentcolor punches the real window shapes. The
+    ring is click-through; each dock tile is its own small window
+    (clicks land on tiles, the gap stays interactive) with mouse
+    bindings for the caregiver and gaze zones from tile_rects. Tiles
+    fade to ghost alpha until the gaze comes near, so they sit over
+    the app without covering it. Callbacks fire on mouse click.
+    Owned end-to-end by the watcher's thread.
     """
 
-    SIZE = 120
+    RING = 120
+    GHOST, SOLID = 0.45, 1.0
 
-    def __init__(self):
+    def __init__(self, on_back, on_kb):
         import tkinter as tk
 
-        r = tk.Tk()
-        self._root = r
-        r.overrideredirect(True)
-        r.attributes("-topmost", True)
-        r.attributes("-transparentcolor", "magenta")
-        r.geometry(f"{self.SIZE}x{self.SIZE}+-300+-300")
-        r.withdraw()
-        self._cv = tk.Canvas(r, width=self.SIZE, height=self.SIZE,
-                             bg="magenta", highlightthickness=0, bd=0)
+        root = tk.Tk()
+        root.withdraw()
+        self._root = root
+        self._ring = self._float(root, self.RING, self.RING,
+                                 click_through=True)
+        self._cv = tk.Canvas(self._ring, width=self.RING,
+                             height=self.RING, bg="magenta",
+                             highlightthickness=0, bd=0)
         self._cv.pack()
-        try:
-            import ctypes
+        self._ring_shown = False
+        self._tiles, self._photos = [], []
+        for cb in (on_back, on_kb):
+            t = self._float(root, TILE_W, TILE_H, click_through=False)
+            lab = tk.Label(t, bg="magenta", bd=0, highlightthickness=0)
+            lab.pack()
+            lab.bind("<Button-1>", lambda _e, f=cb: f())
+            self._tiles.append((t, lab))
+        self._dock_shown = False
+        self._alpha = None
 
-            hwnd = r.winfo_id()
-            ex = ctypes.windll.user32.GetWindowLongW(hwnd, -20)
-            ctypes.windll.user32.SetWindowLongW(hwnd, -20,
-                                                ex | 0x20 | 0x80000)
-        except Exception:
-            pass
-        self._shown = False
+    @staticmethod
+    def _float(root, w, h, click_through):
+        import tkinter as tk
 
-    def draw(self, x, y, frac):
-        c, s = self._cv, self.SIZE
+        t = tk.Toplevel(root)
+        t.overrideredirect(True)
+        t.attributes("-topmost", True)
+        t.attributes("-transparentcolor", "magenta")
+        t.configure(bg="magenta")
+        t.geometry(f"{w}x{h}+-400+-400")
+        t.withdraw()
+        t.update_idletasks()
+        if click_through:
+            try:
+                import ctypes
+
+                hwnd = t.winfo_id()
+                ex = ctypes.windll.user32.GetWindowLongW(hwnd, -20)
+                ctypes.windll.user32.SetWindowLongW(hwnd, -20,
+                                                    ex | 0x20 | 0x80000)
+            except Exception:
+                pass
+        return t
+
+    def ring_draw(self, x, y, frac):
+        c, s = self._cv, self.RING
         cx = cy = s / 2
         rr = 42
         c.delete("all")
@@ -108,23 +198,68 @@ class GazeRing:
                          width=7, style="arc")
         c.create_oval(cx - 6, cy - 6, cx + 6, cy + 6,
                       fill="#ffffff", outline="#ffd60a", width=2)
-        self._root.geometry(f"{s}x{s}+{int(x - s / 2)}+{int(y - s / 2)}")
-        if not self._shown:
-            self._root.deiconify()
-            self._shown = True
-        self._root.update()
+        self._ring.geometry(f"{s}x{s}+{int(x - s / 2)}+{int(y - s / 2)}")
+        if not self._ring_shown:
+            self._ring.deiconify()
+            self._ring_shown = True
+        self._ring.update()
 
-    def hide(self):
-        if self._shown:
+    def ring_hide(self):
+        if self._ring_shown:
             try:
-                self._root.withdraw()
+                self._ring.withdraw()
             except Exception:
                 pass
-            self._shown = False
-        try:
-            self._root.update()
-        except Exception:
-            pass
+            self._ring_shown = False
+
+    def dock_show(self, rects_abs, tiles):
+        """rects_abs: [(x, y, w, h)]; tiles: [(main, sub, mark)]."""
+        import tkinter as tk
+
+        self._photos = []
+        for (t, lab), (rx, ry, _rw, _rh), (main, sub, mark) in zip(
+                self._tiles, rects_abs, tiles):
+            photo = tk.PhotoImage(master=self._root,
+                                  data=self._png(render_tile(main, sub,
+                                                             mark)))
+            self._photos.append(photo)  # else Tk garbage-collects it
+            lab.configure(image=photo)
+            t.geometry(f"{TILE_W}x{TILE_H}+{int(rx)}+{int(ry)}")
+            t.deiconify()
+        self._dock_shown = True
+        self.dock_alpha(self.GHOST)
+
+    @staticmethod
+    def _png(img):
+        import base64
+        import io
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue())
+
+    def dock_alpha(self, a):
+        if a != self._alpha:
+            for t, _lab in self._tiles:
+                try:
+                    t.attributes("-alpha", a)
+                except Exception:
+                    pass
+            self._alpha = a
+        self._root.update()
+
+    def dock_hide(self):
+        if self._dock_shown:
+            for t, _lab in self._tiles:
+                try:
+                    t.withdraw()
+                except Exception:
+                    pass
+            self._dock_shown = False
+
+    @property
+    def dock_shown(self):
+        return self._dock_shown
 
     def close(self):
         try:
@@ -135,6 +270,12 @@ class GazeRing:
 
 def main():
     set_dpi_aware()
+    print("Mirada - look + hold to speak. No headset, no eye tracker,")
+    print("just a webcam. Fully offline: nothing leaves this machine.")
+    print("  1) Pick screen, camera and language in the window.")
+    print("  2) Get comfortable, follow the dots with head AND eyes.")
+    print("  3) Look at a cell, close your eyes ~0.4 s: it speaks.")
+    print("Caregiver mouse always works. Shift+Q quits anywhere.")
     server = Server(("127.0.0.1", 0), Handler)
     port = server.server_address[1]
     url = f"http://127.0.0.1:{port}/"
@@ -151,10 +292,6 @@ def main():
     threading.Thread(target=_run, daemon=True).start()
     win_kw = {"width": 1400, "height": 900, "min_size": (900, 600)}
     window = webview.create_window("Mirada", url, **win_kw)
-    back_win = webview.create_window(
-        "Mirada volver", url + "back", width=440, height=210,
-        frameless=True, on_top=True, hidden=True, resizable=False,
-        transparent=True)
     fs = {"on": False}
 
     def _set_fs(on):
@@ -166,44 +303,41 @@ def main():
             fs["on"] = on
 
     def _watch():
+        from app.i18n import s as _s
+
         placed = False
         last_launch = [None]
-        mon = {"rect": None, "shown": False, "dwell": 0.0}
+        mon = {"rect": None, "zone": None, "since": 0.0}
+        ov = {"inst": None}
 
-        def _back_show():
-            if mon["rect"] is None or mon["shown"]:
+        def _overlay():
+            if ov["inst"] is None:
+                try:
+                    ov["inst"] = Overlay(
+                        on_back=RETURN_EVENT.set, on_kb=KB_EVENT.set)
+                except Exception as e:
+                    print(f"overlay unavailable: {e!r}")
+                    ov["inst"] = False  # fail once, not 20x/second
+                    return None
+            return ov["inst"] or None
+
+        def _dock_show(lang):
+            if mon["rect"] is None:
+                return
+            o = _overlay()
+            if o is None or o.dock_shown:
                 return
             left, top, mw, mh = mon["rect"]
-            rx, ry, _rw, _rh = overlay_rect(mw, mh)
-            try:
-                back_win.move(left + rx, top + ry)
-                back_win.show()
-                mon["shown"] = True
-            except Exception:
-                pass
+            rects = [(left + rx, top + ry, rw, rh)
+                     for rx, ry, rw, rh in tile_rects(mw, mh)]
+            o.dock_show(rects, [("MIRADA", _s(lang, "back_sub"), "\u2190"),
+                                (_s(lang, "kb_main"), _s(lang, "kb_sub"),
+                                 "")])
 
-        ring = {"inst": None}
-
-        def _ring():
-            if ring["inst"] is None:
-                try:
-                    ring["inst"] = GazeRing()
-                except Exception as e:
-                    print(f"ring overlay unavailable: {e!r}")
-                    ring["inst"] = False  # fail once, not 20x/second
-                    return None
-            return ring["inst"] or None
-
-        def _back_hide():
-            if mon["shown"]:
-                try:
-                    back_win.hide()
-                except Exception:
-                    pass
-                mon["shown"] = False
-            if ring["inst"]:
-                ring["inst"].hide()
-            mon["dwell"] = 0.0
+        def _dock_hide():
+            if ov["inst"]:
+                ov["inst"].dock_hide()
+                ov["inst"].ring_hide()
 
         def _restore():
             RETURN_EVENT.set()
@@ -215,7 +349,7 @@ def main():
                 except Exception as e:
                     print(f"window {name} failed: {e!r}")
             _set_fs(True)
-            _back_hide()
+            _dock_hide()
 
         while not done.is_set():
             st = state_get()
@@ -227,7 +361,7 @@ def main():
                     window.minimize()  # get out of the launched app's way
                 except Exception:
                     pass
-                _back_show()
+                _dock_show(st.get("lang", "en"))
             if not launched:
                 if last_launch[0] is not None:
                     # Engine accepted the return: unminimize fullscreen.
@@ -239,32 +373,40 @@ def main():
                         except Exception as e:
                             print(f"window {name} failed: {e!r}")
                     _set_fs(True)
-                _back_hide()
+                _dock_hide()
                 mon["zone"] = None
             elif mon["rect"] is not None:
-                # Gaze-dwell on the floating buttons: left = back to
+                # Gaze-dwell on the floating tiles: left = back to
                 # phrases, right = open the keyboard. Real elapsed time,
                 # with console prints (the first version failed silently
                 # in web-20261101 runs; the builder used the mouse).
+                # Tiles rest at ghost alpha and solidify as gaze nears.
                 gaze = st.get("gaze")
                 _l, _t, mw, mh = mon["rect"]
                 zone = None
+                o = _overlay()
                 if gaze:
                     gx, gy = gaze[0] * mw, gaze[1] * mh
-                    rx, ry, rw, rh = overlay_rect(mw, mh)
-                    if in_rect(gx, gy, (rx, ry, rw, rh)):
-                        zone = "back" if gx < rx + rw / 2 else "kb"
-                    # Eye-cursor follows the gaze over the app; the white
-                    # arc shows the dwell charge before the click lands.
-                    ov = _ring()
-                    if ov is not None:
+                    (brect, krect) = tile_rects(mw, mh)
+                    if in_rect(gx, gy, brect):
+                        zone = "back"
+                    elif in_rect(gx, gy, krect):
+                        zone = "kb"
+                    if o is not None:
                         try:
-                            ov.draw(_l + gx, _t + gy,
-                                    st.get("dwell_frac") or 0.0)
+                            o.ring_draw(_l + gx, _t + gy,
+                                        st.get("dwell_frac") or 0.0)
+                            rx, ry, rw, rh = overlay_rect(mw, mh)
+                            near = (gx > rx - 260 and gy < ry + rh + 260)
+                            o.dock_alpha(o.SOLID if near else o.GHOST)
                         except Exception:
                             pass
-                elif ring["inst"]:
-                    ring["inst"].hide()
+                elif o is not None:
+                    try:
+                        o.ring_hide()
+                        o.dock_alpha(o.GHOST)
+                    except Exception:
+                        pass
                 now_m = time.monotonic()
                 if zone is None:
                     mon["zone"] = None
@@ -278,7 +420,7 @@ def main():
                         KB_EVENT.set()
                     _restore()
                     mon["zone"] = None
-            if RETURN_EVENT.is_set() and mon["shown"]:
+            if RETURN_EVENT.is_set() and ov["inst"] and ov["inst"].dock_shown:
                 _restore()
             if not placed and SETUP["choice"] is not None:
                 _cam, mon_idx, _lang = SETUP["choice"]
@@ -296,9 +438,9 @@ def main():
                 _set_fs(not fs["on"])
             time.sleep(0.05)  # 20 Hz: the ring must track, not hop
         _set_fs(False)  # back to a closable window on the done screen
-        _back_hide()
-        if ring["inst"]:
-            ring["inst"].close()
+        _dock_hide()
+        if ov["inst"]:
+            ov["inst"].close()
 
     threading.Thread(target=_watch, daemon=True).start()
     try:

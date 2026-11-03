@@ -139,6 +139,21 @@ class TestBiasCertain(unittest.TestCase):
         self.assertEqual(stt, "flagged")
         self.assertEqual(c.predict([0.0] * 7), (100.0, 100.0))
 
+    def test_coarse_label_steps_smaller(self):
+        # Same anchor, same residual: a huge tile (sigma 300) must move
+        # the map less per update than a precise small key (sigma 0).
+        # Both converge across repeats; neither jumps to a 2-3 cm-off
+        # tile centre in one step.
+        def step(sigma):
+            c = BiasCorrector(lambda f: (100.0, 100.0), [0.0] * 7,
+                              certain_bias_only=True, trust_px=100.0)
+            _, info = c.update([0.0] * 7, (300.0, 100.0), certain=True,
+                               sigma_px=sigma)
+            return info["shift"]
+
+        self.assertLess(step(300.0), step(0.0))
+        self.assertGreater(step(300.0), 0.0)
+
     def test_uncertain_waits_without_consensus(self):
         # Scattered biases across targets: the regional-error case that
         # left board 20261029-163748 with zero applied anchors.

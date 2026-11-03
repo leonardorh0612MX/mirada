@@ -92,8 +92,12 @@ class BiasCorrector:
         mad = sorted(abs(r - med) for r in rs)[len(rs) // 2]
         return max(120.0, 1.4826 * mad)
 
-    def _apply(self, feats, anch, r, bias_only=False):
+    def _apply(self, feats, anch, r, bias_only=False, sigma_px=0.0):
         w = 1.0 / (1.0 + (r / 150.0) ** 2)
+        # Coarse label: a selection says "somewhere in this tile", not
+        # "exactly at its centre". Scale the step by the tile's own
+        # uncertainty so huge cells teach slowly and small keys faster.
+        w *= 150.0 / (150.0 + max(sigma_px, 0.0))
         hx, hy = self._head_of(feats)
         before = (self.ax.offset(hx), self.ay.offset(hy))
         pbx, pby = self.base_predict(feats)
@@ -110,7 +114,7 @@ class BiasCorrector:
             self._rescale(before, after, f, hx, hy)
         return w, min(shift, self.trust_px)
 
-    def update(self, features, anchor, certain=False):
+    def update(self, features, anchor, certain=False, sigma_px=0.0):
         """Propose an anchor. Returns (state, info).
 
         state: 'waiting' (no consensus yet), 'applied', 'flagged'
@@ -122,6 +126,9 @@ class BiasCorrector:
         different bias (board 20261029-163748: waiting:285,
         flagged:427, waiting:89, zero applied). Soft weight + trust
         region bound a wrong target to <=25 px.
+        sigma_px is the anchor's own position noise (tile half-size for
+        selections): coarse labels step smaller per update and converge
+        across repeats instead of jumping to a 2-3 cm-off point.
         """
         bx, by = self.base_predict(features)
         bias = (anchor[0] - bx, anchor[1] - by)
@@ -133,7 +140,8 @@ class BiasCorrector:
                 # recalibration instead of chasing it across the screen.
                 return "flagged", {"residual": r, "certain": True}
             w, shift = self._apply(features, anchor, r,
-                                   bias_only=self.certain_bias_only)
+                                   bias_only=self.certain_bias_only,
+                                   sigma_px=sigma_px)
             return "applied", {"residual": r, "weight": w, "shift": shift,
                                "certain": True}
         flagged = r > 3.0 * self._sigma()
