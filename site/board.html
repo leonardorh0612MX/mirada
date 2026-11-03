@@ -262,7 +262,7 @@
   <div class="liquid"><i></i><i></i><i></i></div>
   <div style="position:relative">
     <h2 data-i18n="setup_title">Choose your screen and camera</h2>
-    <p class="sub" data-i18n="setup_sub">Click each one. Restart anytime to change them.</p>
+    <p class="sub" data-i18n="setup_sub">Click each one. Newly connected devices show up on their own.</p>
     <div class="langseg" role="group" aria-label="Language">
       <button type="button" data-lang="en" class="sel">ENGLISH</button>
       <button type="button" data-lang="es">ESPAÑOL</button>
@@ -342,7 +342,7 @@
      toggle previews live and travels to the server on Continue. */
   var I18N = {
     en: { setup_title: "Choose your screen and camera",
-      setup_sub: "Click each one. Restart anytime to change them.",
+      setup_sub: "Click each one. Newly connected devices show up on their own.",
       monitor: "Monitor", camera: "Camera · move to tell them apart",
       continue: "Continue →", leaving_big: "Preparing your space…",
       leaving_small: "Closing picker cameras · opening your camera",
@@ -369,7 +369,7 @@
       bar_armed: "open {0}? hold your gaze again to confirm",
       bar_outside: "gaze outside trusted area", stat_light: "light" },
     es: { setup_title: "Elige tu pantalla y tu cámara",
-      setup_sub: "Haz click en cada una. Puedes cambiarlas cuando quieras reiniciando.",
+      setup_sub: "Haz click en cada una. Los dispositivos recién conectados aparecen solos.",
       monitor: "Monitor", camera: "Cámara · muévete para distinguirlas",
       continue: "Continuar →", leaving_big: "Preparando tu espacio…",
       leaving_small: "Cerrando cámaras de selección · abriendo tu cámara",
@@ -468,7 +468,10 @@
         host.appendChild(d);
       });
       if (mons.length === 1) { pick.mon = mons[0].idx; markSel(host, pick.mon); ready(); }
-      else if (pick.mon !== null) { markSel(host, pick.mon); ready(); }
+      else if (pick.mon !== null) {
+        if (mons.every(function (m) { return m.idx !== pick.mon; })) pick.mon = null;
+        markSel(host, pick.mon); ready();
+      }
     });
     fetch("/cameras").then(function (r) { return r.json(); }).then(function (cams) {
       var host = $("cams");
@@ -491,13 +494,34 @@
         img.src = "/cam/" + c.idx + ".jpg?t=" + Date.now();
       });
       if (cams.length === 1) { pick.cam = cams[0].idx; markSel(host, pick.cam); ready(); }
-      else if (pick.cam !== null) { markSel(host, pick.cam); ready(); }
+      else if (pick.cam !== null) {
+        if (cams.every(function (c) { return c.idx !== pick.cam; })) pick.cam = null;
+        markSel(host, pick.cam); ready();
+      }
       if (camTimer) clearInterval(camTimer);
+      var sig = null, tick = 0, polling = false;
       camTimer = setInterval(function () {
         host.querySelectorAll(".pick").forEach(function (card) {
           var img = card.querySelector("img");
           if (img) img.src = "/cam/" + card.dataset.idx + ".jpg?t=" + Date.now();
         });
+        /* Hot-plug: re-read devices every ~3 s while setup is open.
+           New hardware appears (and unplugged vanishes) without a
+           restart; rebuild only when the set actually changes. */
+        if (++tick % 8 || polling || !$("setup").classList.contains("on")) return;
+        polling = true;
+        Promise.all([
+          fetch("/monitors").then(function (r) { return r.json(); }),
+          fetch("/cameras").then(function (r) { return r.json(); })
+        ]).then(function (res) {
+          var now = JSON.stringify([
+            res[0].map(function (m) { return [m.idx, m.w, m.h]; }),
+            res[1].map(function (c) { return c.idx; })
+          ]);
+          if (sig === null) sig = now;
+          else if (now !== sig) { sig = now; loadSetup(); return; }
+          polling = false;
+        }).catch(function () { polling = false; });
       }, 380);
     });
   }

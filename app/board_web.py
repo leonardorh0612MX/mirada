@@ -30,7 +30,8 @@ from app.i18n import (cells_for_lang, funcs_for_lang, norm_lang,  # noqa: E402
                       s)
 from corrector.fusion import (PostureGuard, SelectionCooldown,  # noqa: E402
                               enrollment_spread)
-from app.camselect import available_cameras, available_monitors  # noqa: E402
+from app.camselect import (available_cameras, available_monitors,  # noqa: E402
+                             sync_probe_caps, try_open_camera)
 from app.deskkeys import grid_keys  # noqa: E402
 from app.inject import click_at, send_text, shift_q_pressed  # noqa: E402
 from app.keyboard_layout import board_keyboard, hit_key, type_text  # noqa: E402
@@ -111,6 +112,8 @@ FS_EVENT = threading.Event()  # page asks the native window to toggle fullscreen
 RETURN_EVENT = threading.Event()  # overlay asks to bring the board back
 KB_EVENT = threading.Event()  # overlay asks for the keyboard page
 PROBE_CAPS = {}
+PROBE_LOCK = threading.Lock()  # rescan vs engine release
+_RESCAN_T = [0.0]  # last hot-plug scan (DSHOW opens are slow: 6 s min)
 
 
 def state_set(**kw):
@@ -195,6 +198,16 @@ class Handler(BaseHTTPRequestHandler):
                             "img": base64.b64encode(buf.getvalue()).decode()})
             self._json(out)
         elif self.path == "/cameras":
+            # Hot-plug: newly connected cameras appear on the setup
+            # screen without restarting (volunteer plugged a monitor +
+            # camera mid-setup and saw nothing). Throttled, setup-only:
+            # once a choice exists the engine owns the devices.
+            now = time.monotonic()
+            if (SETUP["choice"] is None and
+                    now - _RESCAN_T[0] > 6.0):
+                with PROBE_LOCK:
+                    sync_probe_caps(PROBE_CAPS, try_open_camera)
+                _RESCAN_T[0] = now
             self._json([{"idx": i} for i in sorted(PROBE_CAPS)])
         elif self.path.startswith("/cam/"):
             idx = int(self.path.split("/")[2].split(".")[0])
@@ -218,9 +231,22 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 ok, frame = cap.read()
             if not ok or frame is None:
-                self.send_response(204)
+                # Unplugged mid-setup: drop after 4 consecutive failures
+                # so the card disappears on the next signature poll.
+                cache["fail"] = cache.get("fail", 0) + 1
+                if cache["fail"] >= 4:
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+                    with PROBE_LOCK:
+                        PROBE_CAPS.pop(idx, None)
+                    self.send_response(404)
+                else:
+                    self.send_response(204)
                 self.end_headers()
                 return
+            cache["fail"] = 0
             ok, enc = cv2.imencode(".jpg", frame,
                                    [cv2.IMWRITE_JPEG_QUALITY, 72])
             body = enc.tobytes()
@@ -298,7 +324,8 @@ def engine(notify_done):
 
     # Probe cameras for the picker (released once setup is chosen).
     for idx, cap in available_cameras():
-        PROBE_CAPS[idx] = (cap, threading.Lock(), {"t": 0.0, "jpg": None})
+        PROBE_CAPS[idx] = (cap, threading.Lock(),
+                           {"t": 0.0, "jpg": None, "fail": 0})
     print(f"cameras: {sorted(PROBE_CAPS)}")
 
     while SETUP["choice"] is None:
@@ -310,9 +337,10 @@ def engine(notify_done):
     # cells, funcs, default apps, phrases, TTS voice and calib cues.
     cam_idx, mon_idx, lang = SETUP["choice"]
     lang = norm_lang(lang)
-    for idx, (cap, _lk, _cache) in list(PROBE_CAPS.items()):
-        cap.release()
-    PROBE_CAPS.clear()
+    with PROBE_LOCK:
+        for idx, (cap, _lk, _cache) in list(PROBE_CAPS.items()):
+            cap.release()
+        PROBE_CAPS.clear()
     lang_cells = cells_for_lang(lang)
     cfg = load_config(cfg_path, [c[0] for c in lang_cells], lang)
     PHRASE.clear()

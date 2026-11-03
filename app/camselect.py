@@ -14,24 +14,50 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BG, CARD, INK, MUTED, ACCENT = "#141210", "#221c15", "#f2ede4", "#a89a86", "#e8a33d"
 
 
-def available_cameras(max_n=5):
-    """Open each index, keep the ones yielding a frame. Returns [(idx, cap)]."""
+def try_open_camera(idx):
+    """Open one camera index, validated with a frame. Cap or None."""
     import cv2
 
+    try:
+        cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+    except Exception:
+        return None
+    if not cap.isOpened():
+        return None
+    ok, frame = cap.read()
+    if not ok or frame is None:
+        cap.release()
+        return None
+    return cap
+
+
+def available_cameras(max_n=5):
+    """Open each index, keep the ones yielding a frame. Returns [(idx, cap)]."""
     found = []
     for i in range(max_n):
-        try:
-            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
-        except Exception:
-            continue
-        if not cap.isOpened():
-            continue
-        ok, frame = cap.read()
-        if not ok or frame is None:
-            cap.release()
-            continue
-        found.append((i, cap))
+        cap = try_open_camera(i)
+        if cap is not None:
+            found.append((i, cap))
     return found
+
+
+def sync_probe_caps(caps, opener, n=5):
+    """Add newly-plugged cameras to a probe dict. Returns sorted indices.
+
+    caps: {idx: (cap, lock, cache)} mutated in place; opener(idx) is
+    try_open_camera in production, a fake in tests. Additive only:
+    never closes anything, so a slow rescan can't steal the live feed.
+    """
+    import threading
+
+    for i in range(n):
+        if i in caps:
+            continue
+        cap = opener(i)
+        if cap is not None:
+            caps[i] = (cap, threading.Lock(),
+                       {"t": 0.0, "jpg": None, "fail": 0})
+    return sorted(caps)
 
 
 def available_monitors():

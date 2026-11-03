@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.camselect import resolve_camera, resolve_monitor
+from app.camselect import resolve_camera, resolve_monitor, sync_probe_caps
 
 
 class FakeCap:
@@ -48,6 +48,25 @@ class TestResolveMonitor(unittest.TestCase):
 
     def test_no_monitor_returns_none(self):
         self.assertIsNone(quiet(resolve_monitor, None, probe=lambda: []))
+
+
+class TestSyncProbeCaps(unittest.TestCase):
+    def test_hotplug_adds_only_new_indices(self):
+        import threading
+
+        live = {0: (FakeCap(), threading.Lock(),
+                    {"t": 0.0, "jpg": None, "fail": 0})}
+        opened = []
+
+        def opener(i):
+            opened.append(i)
+            return FakeCap() if i == 2 else None
+
+        self.assertEqual(sync_probe_caps(live, opener, n=3), [0, 2])
+        self.assertNotIn(1, live)
+        self.assertEqual(live[2][2]["fail"], 0)
+        # Already-open index is never re-opened (DSHOW is slow).
+        self.assertNotIn(0, opened)
 
 
 if __name__ == "__main__":
