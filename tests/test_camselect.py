@@ -68,6 +68,17 @@ class TestSyncProbeCaps(unittest.TestCase):
         # Already-open index is never re-opened (DSHOW is slow).
         self.assertNotIn(0, opened)
 
+    def test_quarantined_indices_are_skipped(self):
+        live = {}
+        opened = []
+
+        def opener(i):
+            opened.append(i)
+            return FakeCap()
+
+        self.assertEqual(sync_probe_caps(live, opener, n=3, skip={1}), [0, 2])
+        self.assertNotIn(1, opened)
+
 
 if __name__ == "__main__":
     unittest.main()

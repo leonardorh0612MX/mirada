@@ -114,6 +114,7 @@ KB_EVENT = threading.Event()  # overlay asks for the keyboard page
 PROBE_CAPS = {}
 PROBE_LOCK = threading.Lock()  # rescan vs engine release
 _RESCAN_T = [0.0]  # last hot-plug scan (DSHOW opens are slow: 6 s min)
+_QUARANTINE = {}  # idx -> monotonic deadline; dropped cams rest here 60 s
 
 
 def state_set(**kw):
@@ -205,8 +206,12 @@ class Handler(BaseHTTPRequestHandler):
             now = time.monotonic()
             if (SETUP["choice"] is None and
                     now - _RESCAN_T[0] > 6.0):
+                before = set(PROBE_CAPS)
+                skip = {i for i, dl in _QUARANTINE.items() if now < dl}
                 with PROBE_LOCK:
-                    sync_probe_caps(PROBE_CAPS, try_open_camera)
+                    sync_probe_caps(PROBE_CAPS, try_open_camera, skip=skip)
+                for i in sorted(set(PROBE_CAPS) - before):
+                    print(f"setup camera added: idx={i}")
                 _RESCAN_T[0] = now
             self._json([{"idx": i} for i in sorted(PROBE_CAPS)])
         elif self.path.startswith("/cam/"):
@@ -241,6 +246,9 @@ class Handler(BaseHTTPRequestHandler):
                         pass
                     with PROBE_LOCK:
                         PROBE_CAPS.pop(idx, None)
+                    _QUARANTINE[idx] = time.monotonic() + 60.0
+                    print(f"setup camera dropped: idx={idx} "
+                          f"(unreadable, retry in 60 s)")
                     self.send_response(404)
                 else:
                     self.send_response(204)

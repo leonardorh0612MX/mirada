@@ -14,8 +14,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BG, CARD, INK, MUTED, ACCENT = "#141210", "#221c15", "#f2ede4", "#a89a86", "#e8a33d"
 
 
-def try_open_camera(idx):
-    """Open one camera index, validated with a frame. Cap or None."""
+def try_open_camera(idx, warmup_frames=3):
+    """Open one camera index, validated by streaming frames. Cap or None.
+
+    One good frame is not enough: some DSHOW devices answer the first
+    read and then never stream, which used to add a card stuck on its
+    skeleton forever (setup hot-plug, Nov 2). Require warmup_frames
+    consecutive frames; a slow starter simply appears on a later scan.
+    """
     import cv2
 
     try:
@@ -24,10 +30,11 @@ def try_open_camera(idx):
         return None
     if not cap.isOpened():
         return None
-    ok, frame = cap.read()
-    if not ok or frame is None:
-        cap.release()
-        return None
+    for _ in range(max(warmup_frames, 1)):
+        ok, frame = cap.read()
+        if not ok or frame is None:
+            cap.release()
+            return None
     return cap
 
 
@@ -41,17 +48,18 @@ def available_cameras(max_n=5):
     return found
 
 
-def sync_probe_caps(caps, opener, n=5):
+def sync_probe_caps(caps, opener, n=5, skip=frozenset()):
     """Add newly-plugged cameras to a probe dict. Returns sorted indices.
 
     caps: {idx: (cap, lock, cache)} mutated in place; opener(idx) is
     try_open_camera in production, a fake in tests. Additive only:
     never closes anything, so a slow rescan can't steal the live feed.
+    skip holds quarantined indices (dropped for unreadability).
     """
     import threading
 
     for i in range(n):
-        if i in caps:
+        if i in caps or i in skip:
             continue
         cap = opener(i)
         if cap is not None:
