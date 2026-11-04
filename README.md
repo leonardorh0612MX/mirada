@@ -5,7 +5,11 @@ eye tracker, no per-frame cloud calls: look at a cell, close your eyes for
 ~0.4 s, and the computer speaks. Built for the Meta Global AI Developer
 Hackathon (accessibility track).
 
-Demo video: recorded Nov 3, linked here on submission day.
+Demo video: recorded Nov 3–4, linked here on submission day.
+
+This repo was created for the event (initial commit Oct 31, 2026):
+nothing in it pre-exists the hackathon — every line was written this
+week.
 
 ## Why it's special
 
@@ -17,8 +21,9 @@ Demo video: recorded Nov 3, linked here on submission day.
   calibrated pose instead of learning garbage.
 - **It works inside real apps.** An APPS page launches Discord, the
   browser, YouTube and more with huge tiles; your gaze then becomes the
-  mouse (rest-to-click with a charging ring), a floating dock takes you
-  back, and an on-screen keyboard types into any field.
+  mouse (look freely, close your eyes 0.4 s to click — same grammar as
+  the board), a floating dock takes you back, and an on-screen keyboard
+  types into any field.
 - **Private by construction.** Gaze, calibration and speech run fully
   offline on your machine. Cloud models touch only the research tooling,
   never the live loop.
@@ -59,8 +64,8 @@ Caregiver mouse always works alongside gaze. Shift+Q quits anywhere.
 - **Type anything**: a full gaze keyboard with word completion and a SEND
   key that delivers the text into the focused app.
 - **Use your computer**: launch apps from giant tiles (double-hold to
-  confirm), click by resting your gaze, return anytime with the floating
-  MIRADA tile — ghosted until you look at it.
+  confirm), click with a 0.4 s eye-close anywhere you look, return
+  anytime with the floating MIRADA tile — ghosted until you look at it.
 - **Stay calibrated**: selections quietly re-anchor the map; if you
   slouch out of your pose it tells you to press R instead of dying
   silently.
@@ -73,8 +78,23 @@ selections; tile-size uncertainty, a repeat cooldown and a posture
 guardrail keep bad labels from poisoning it. Start here:
 
 - `docs/ARCHITECTURE.md` — modules, data flow, interfaces.
-- `docs/DECISIONS.md` — every technical decision with alternatives (D1–D25).
+- `docs/DECISIONS.md` — every technical decision with alternatives (D1–D39).
 - `docs/RESEARCH.md` — verified prior art (WebGazer, Aria, Online-EYE…).
+
+## Where the Meta models run
+
+| Model | What it does | Where it runs |
+|---|---|---|
+| `muse-spark-1.3` | Proposes semantic anchors: looks at a screenshot + context and names what you almost certainly looked at, with confidence | Research tooling (`tools/gen_anchors.py`), offline after a session |
+| `sam-3.1` | Pinpoints the proposed concept to a pixel box on the screenshot (strategy D) | Same run, Meta Model API |
+| `muse-spark-open` (Baseten) | High-volume Spark backend for anchor generation | Same tool, `--backend baseten` |
+| `muse-wonder-1.0` | Architecture review (gaze-map math, enrollment design) | Design time, not shipped |
+| `muse-image-1.0` | README/site artwork | Design time, committed under `site/` |
+
+Deliberately: the live product calls **no model at all** — the LLM
+provides labels offline, local math (affine map + bias corrector) does
+the correction at ~30 fps. That is the whole thesis, and why the app
+runs for judges with no API key.
 
 ## The science
 
@@ -116,7 +136,7 @@ replay strategies, `recorder/` session logs.
 .\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
-206 tests, all green. Covers calibration math, blink/hold detection,
+233 tests, all green. Covers calibration math, blink/hold detection,
 fusion guards, language tables, dock geometry, keyboard injection,
 config round-trips and replay determinism.
 

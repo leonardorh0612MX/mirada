@@ -92,6 +92,11 @@ def main():
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     load_dotenv(os.path.join(repo, ".env"))
     print(f"backend: {spark.backend()}")
+    if backend == "baseten":
+        print("models: meta-models/muse-spark-open-1026 (concepts only, "
+              "no SAM boxes)")
+    else:
+        print("models: muse-spark-1.3 (concepts) + sam-3.1 (boxes)")
 
     shots, monitor_rect = [], (0, 0)
     with open(os.path.join(spath, "events.jsonl"), encoding="utf-8") as fh:
