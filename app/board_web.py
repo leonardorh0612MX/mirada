@@ -109,6 +109,52 @@ class AppDwell:
         return False
 
 
+def fresh_median(hist, now, back_min=0.15, back_max=0.5):
+    """Median gaze over the fresh window. Pure (tested).
+
+    hist: [(t, x, y)] absolute. Median of points with
+    now-back_max <= t <= now-back_min, or None when empty. Routes
+    tile holds: the lagged click point (0.45-0.9 s back) fires the
+    fixation just left, the fresh one fires where the user looks
+    now; the 0.15 s near edge skips closure smear.
+    """
+    pts = [(x, y) for t, x, y in hist
+           if now - back_max <= t <= now - back_min]
+    if not pts:
+        return None
+    xs = sorted(x for x, _y in pts)
+    ys = sorted(y for _x, y in pts)
+    return (xs[len(xs) // 2], ys[len(ys) // 2])
+
+
+def tile_hold_target(x, y, rects, margin=60.0):
+    """Which floating tile a hold point hits. Pure (tested).
+
+    rects: [back, kb] absolute (x, y, w, h) as published by the app
+    watcher, or None when the dock isn't shown. Returns
+    "kb"/"back"/None. Each tile is inflated by margin (edge error
+    eats strict edges); the strip between the tiles stays dead
+    (ambiguous by construction).
+    """
+    if not rects or len(rects) != 2:
+        return None
+    (bx, by, bw, bh), (kx, ky, kw, kh) = rects
+    if (bx + bw < x < kx
+            and min(by, ky) - margin <= y <= max(by + bh, ky + kh) + margin):
+        return None
+    tiles = (("back", rects[0]), ("kb", rects[1]))
+    for name, (rx, ry, rw, rh) in tiles:
+        if rx <= x <= rx + rw and ry <= y <= ry + rh:
+            return name
+    # Strict hits beat margin hits: back's margin overlaps kb's
+    # strict left edge, and the point belongs to kb.
+    for name, (rx, ry, rw, rh) in tiles:
+        if (rx - margin <= x <= rx + rw + margin
+                and ry - margin <= y <= ry + rh + margin):
+            return name
+    return None
+
+
 CMDQ = queue.Queue()
 SETUP = {"choice": None}
 FS_EVENT = threading.Event()  # page asks the native window to toggle fullscreen
@@ -1090,9 +1136,28 @@ def engine(notify_done):
                     cx, cy = clamp_xy(xs[len(xs) // 2],
                                       ys[len(ys) // 2],
                                       (mleft, mtop, mw, mh))
-                    # Floating dock corner belongs to the watcher
-                    # (tile zones); a hold aimed there clicks nothing.
-                    if not (cx - mleft > mw - 448 and cy - mtop < 140):
+                    # Route on the FRESH fixation, click on the
+                    # lagged point. Routing on the lagged median fired
+                    # the fixation just left (a video hold opened the
+                    # keyboard, a tile hold clicked the video, Nov 4);
+                    # the click itself stays lagged (proven stable).
+                    # No corner gate: the tile hit-test owns its area
+                    # (with the dock never shown, rects are None and
+                    # every hold clicks, as before D41).
+                    fresh = fresh_median(gaze_hist, now)
+                    fx, fy = fresh if fresh is not None else (cx, cy)
+                    tgt = tile_hold_target(fx, fy,
+                                           state_get().get("tile_rects"))
+                    if tgt == "kb":
+                        KB_EVENT.set()
+                    elif tgt == "back":
+                        RETURN_EVENT.set()
+                    if tgt is not None:
+                        append_event(session, "tile_hold",
+                                     {"target": tgt,
+                                      "x": round(fx), "y": round(fy)})
+                        print(f"tile hold {tgt} at ({fx:.0f},{fy:.0f})")
+                    else:
                         RING_HIDDEN.clear()
                         RING_HIDE.set()
                         RING_HIDDEN.wait(0.3)

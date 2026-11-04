@@ -29,7 +29,7 @@ except ImportError:
 
 from app.board_web import (FS_EVENT, KB_EVENT, RETURN_EVENT,  # noqa: E402
                            RING_HIDE, RING_HIDDEN, SETUP, Handler, Server,
-                           engine, state_get)
+                           engine, state_get, state_set)
 from tools.record_session import list_monitors, set_dpi_aware  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -419,6 +419,10 @@ def main():
             o.dock_show(rects, [("MIRADA", _s(lang, "back_sub"), "\u2190"),
                                 (_s(lang, "kb_main"), _s(lang, "kb_sub"),
                                  "")])
+            # Absolute rects for the engine: a look+close hold aimed
+            # at a tile fires it (open-eye dwell never completes on
+            # the small edge tiles, two sessions Nov 4).
+            state_set(tile_rects=[tuple(r) for r in rects])
 
         def _dock_hide():
             if ov["inst"]:
@@ -452,6 +456,7 @@ def main():
                 if last_launch[0] is not None:
                     # Engine accepted the return: unminimize fullscreen.
                     last_launch[0] = None
+                    state_set(tile_rects=None)
                     for name in ("restore", "show"):
                         try:
                             getattr(window, name)()

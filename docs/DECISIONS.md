@@ -271,3 +271,19 @@ Format per decision: choice, alternatives, rationale, status. Status is Proposed
 - Choice: the splash auto-advanced on a fixed 2.5 s timer, so narration couldn't pace it. It now waits for click/Space/Enter (hint fades in after the typewriter), with a 12 s auto-fallback so real users are never stranded. Demo direction: hold the logo through the opening line, advance mid-problem-beat.
 - Status: Accepted, pending live. Page script node-checked. Live check: splash sits until clicked; hint appears; setup loads on advance.
 
+## D41. Holds fire the floating tiles (Nov 4)
+
+- Correction: gaze dwell (0.8 s, eyes open) never completed on the small corner tiles - two Nov-4 sessions where only the mouse opened the keyboard from an app, while holds aimed at the corner deliberately clicked nothing (D32-era exclusion). The engine now hit-tests corner holds against the absolute tile rects (published in shared state by the dock watcher, cleared on return) and fires kb/back on look+close - one grammar everywhere. Gap holds still click nothing; open-eye dwell stays as a parallel path.
+- Status: FAILED live, corrected by D42. 239 tests OK (6 new: tile hold routing). Live: routing on the lagged click point fired the tile just left (video hold opened the keyboard, tile hold clicked the video) and strict rects missed genuine attempts.
+
+## D42. Tile holds route on the fresh fixation (Nov 4)
+
+- Correction: D41 routed on the lagged click median (0.45-0.9 s back), which represents where the user WAS, not where they look when closing. Routing now uses fresh_median (median over [now-0.5, now-0.15], skipping closure smear; falls back to the lagged point when the window is empty) while the click itself stays lagged (proven stable). Each tile is inflated 60 px (edge error eats strict edges), strict hits beat margin hits (back's margin overlaps kb's strict edge), the inter-tile gap stays dead, and the hardcoded 448x140 corner gate is gone (the hit-test owns its area; with no dock, rects are None and every hold clicks).
+- Status: Accepted, pending live. 246 tests OK (7 new: margin/gap/strict-precedence, fresh window). Live check: video hold clicks the video (no keyboard); tile look+close opens it (expect "tile hold kb" + page).
+
+## D43. Single-instance lock (Nov 4)
+
+- Correction: every launch twins itself - a system-python `mirada.py` child spawns ~144 ms after the venv parent (proven by parent chain + microsecond creation stamps; the morning's 57816/3080 and the afternoon's 1560 are all this, not user double-launches). Twins fight over the exclusive camera (flicker, loading icon, "no cameras"), so the second copy must die fast. mirada.py now claims an msvcrt byte lock in the temp dir BEFORE heavy imports; the loser prints "already running" and exits 0 without touching a device. Stale-proof: the OS drops the lock with a dead holder (a test kills the holder and reclaims immediately). Wart: relaunching within ~1 s of a crash can falsely report once - relaunch again.
+- Open: the spawner is unknown - no subprocess/Popen/os.system/multiprocessing/exec/ShellExecute of mirada.py exists in our source (all vectors searched). The guard neuters it regardless; the mechanism can be hunted post-deadline.
+- Status: Accepted, pending live. 249 tests OK (3 new: hold, twin-exits-0, dead-holder-releases). Live check: launch once, confirm one board + stable previews; any twin exits in <1 s with the message.
+
