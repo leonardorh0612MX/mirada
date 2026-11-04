@@ -23,21 +23,25 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.board import (PHRASE, enrollment_plan,  # noqa: E402
-                       guide_reference, natural_block_indices, phrase_area,
-                       pose_inside, strip_layout)
+                       guide_reference, phrase_area, pose_inside,
+                       strip_layout)
 from app.board_config import load_config, save_config  # noqa: E402
 from app.i18n import (cells_for_lang, funcs_for_lang, norm_lang,  # noqa: E402
                       s)
 from corrector.fusion import (PostureGuard, SelectionCooldown,  # noqa: E402
                               enrollment_spread)
-from app.camselect import (available_cameras, available_monitors,  # noqa: E402
-                             sync_probe_caps, try_open_camera)
+from app.camselect import (available_monitors,  # noqa: E402
+                             prune_dead_caps, sync_probe_caps,
+                             try_open_camera)
 from app.deskkeys import grid_keys  # noqa: E402
-from app.inject import click_at, send_text, shift_q_pressed  # noqa: E402
+from app.inject import (center_on_monitor, clamp_xy, click_at,  # noqa: E402
+                          foreground_rect, foreground_title, park_cursor,
+                          place_on_monitor, send_text, shift_q_pressed)
 from app.keyboard_layout import board_keyboard, hit_key, type_text  # noqa: E402
 from app.words import apply_suggestion, current_prefix, load_words, suggest  # noqa: E402
 from app.apps import open_app  # noqa: E402
-from app.speak import set_language, speak, voice_status  # noqa: E402
+from app.speak import (prewarm as prewarm_voice, set_language,  # noqa: E402
+                         speak, speak_sync, voice_status)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOCK = threading.Lock()
@@ -54,12 +58,11 @@ STATE = {
 class AppDwell:
     """Stable-gaze click for app mode. Pure timing logic.
 
-    Blink-hold clicks fired all over Discord in web-20261101-230023
-    (11 clicks while just looking around). A click needs the gaze to
-    rest within radius_px for dwell_s, then a refractory window.
-    Jitter never sits still, so samples accumulate around a running
-    centroid and the click lands on that centroid - not on the live
-    (wandering) point. progress() drives the ring's fill arc.
+    DORMANT since Nov 3: dwell-fire was the Midas touch (11 unintended
+    clicks reading YouTube in a minute), so hold-to-click replaced it.
+    Kept tested as the instant fallback - delete only after the video.
+    (History: dwell itself replaced Nov-1 hold-clicks, which misfired
+    under the old blink detector; the current 0.4 s hold is 14/15.)
     """
 
     def __init__(self, radius_px=130.0, dwell_s=1.0, refractory_s=2.0):
@@ -111,10 +114,11 @@ SETUP = {"choice": None}
 FS_EVENT = threading.Event()  # page asks the native window to toggle fullscreen
 RETURN_EVENT = threading.Event()  # overlay asks to bring the board back
 KB_EVENT = threading.Event()  # overlay asks for the keyboard page
+RING_HIDE = threading.Event()  # engine asks the watcher to drop the ring
+RING_HIDDEN = threading.Event()  # watcher confirms the ring is down
 PROBE_CAPS = {}
 PROBE_LOCK = threading.Lock()  # rescan vs engine release
 _RESCAN_T = [0.0]  # last hot-plug scan (DSHOW opens are slow: 6 s min)
-_QUARANTINE = {}  # idx -> monotonic deadline; dropped cams rest here 60 s
 
 
 def state_set(**kw):
@@ -135,13 +139,22 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _write(self, body):
+        # The page cancels in-flight preview/image loads constantly
+        # (rebuilds, navigation); a dead socket is routine, not news.
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError,
+                ConnectionAbortedError):
+            pass
+
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        self._write(body)
 
     def do_GET(self):
         if self.path == "/":
@@ -152,7 +165,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            self._write(body)
         elif self.path in ("/icon-m.svg", "/bust.png"):
             name = self.path.lstrip("/")
             path = os.path.join(REPO, "site", name)
@@ -167,7 +180,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            self._write(body)
         elif self.path == "/icon.svg":
             path = os.path.join(REPO, "site", "icon.svg")
             with open(path, "rb") as fh:
@@ -176,7 +189,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "image/svg+xml")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            self._write(body)
         elif self.path == "/events":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -199,17 +212,21 @@ class Handler(BaseHTTPRequestHandler):
                             "img": base64.b64encode(buf.getvalue()).decode()})
             self._json(out)
         elif self.path == "/cameras":
-            # Hot-plug: newly connected cameras appear on the setup
-            # screen without restarting (volunteer plugged a monitor +
-            # camera mid-setup and saw nothing). Throttled, setup-only:
-            # once a choice exists the engine owns the devices.
+            # Hot-plug is ADD-only: newly connected cameras appear on
+            # the setup screen without restarting, but nothing is ever
+            # removed here - the old auto-drop ate a working Logitech
+            # on transient DSHOW failures (Nov 3). Dead cards clear via
+            # the manual rescan button. Throttled, setup-only: once a
+            # choice exists the engine owns the devices.
             now = time.monotonic()
             if (SETUP["choice"] is None and
                     now - _RESCAN_T[0] > 6.0):
-                before = set(PROBE_CAPS)
-                skip = {i for i, dl in _QUARANTINE.items() if now < dl}
                 with PROBE_LOCK:
-                    sync_probe_caps(PROBE_CAPS, try_open_camera, skip=skip)
+                    # Snapshot INSIDE the lock: the lock-free version
+                    # caught the startup fill mid-way and re-announced
+                    # cameras that were already there (Nov 3).
+                    before = set(PROBE_CAPS)
+                    sync_probe_caps(PROBE_CAPS, try_open_camera)
                 for i in sorted(set(PROBE_CAPS) - before):
                     print(f"setup camera added: idx={i}")
                 _RESCAN_T[0] = now
@@ -231,30 +248,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "image/jpeg")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
-                self.wfile.write(body)
+                self._write(body)
                 return
             with lock:
                 ok, frame = cap.read()
             if not ok or frame is None:
-                # Unplugged mid-setup: drop after 4 consecutive failures
-                # so the card disappears on the next signature poll.
-                cache["fail"] = cache.get("fail", 0) + 1
-                if cache["fail"] >= 4:
-                    try:
-                        cap.release()
-                    except Exception:
-                        pass
-                    with PROBE_LOCK:
-                        PROBE_CAPS.pop(idx, None)
-                    _QUARANTINE[idx] = time.monotonic() + 60.0
-                    print(f"setup camera dropped: idx={idx} "
-                          f"(unreadable, retry in 60 s)")
-                    self.send_response(404)
-                else:
-                    self.send_response(204)
+                # A single failed read means nothing (DSHOW stutters);
+                # the card keeps its last frame. Removal happens only
+                # through the manual rescan button.
+                self.send_response(204)
                 self.end_headers()
                 return
-            cache["fail"] = 0
             ok, enc = cv2.imencode(".jpg", frame,
                                    [cv2.IMWRITE_JPEG_QUALITY, 72])
             body = enc.tobytes()
@@ -263,7 +267,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "image/jpeg")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            self._write(body)
         else:
             self.send_response(404)
             self.end_headers()
@@ -301,6 +305,27 @@ class Handler(BaseHTTPRequestHandler):
         elif kind == "keyboard":
             KB_EVENT.set()
             self._json({"ok": True})
+        elif kind == "rescan":
+            # Manual device refresh from the setup screen (the ⟳
+            # button): drop what truly stopped streaming, pick up
+            # what was plugged in. Setup-only: once the engine owns
+            # the cameras this is a no-op.
+            if SETUP["choice"] is not None:
+                self._json({"ok": False})
+                return
+            with PROBE_LOCK:
+                removed = prune_dead_caps(PROBE_CAPS)
+                before = set(PROBE_CAPS)
+                sync_probe_caps(PROBE_CAPS, try_open_camera)
+                added = sorted(set(PROBE_CAPS) - before)
+            for i in removed:
+                print(f"setup camera removed: idx={i} (rescan)")
+            for i in added:
+                print(f"setup camera added: idx={i}")
+            _RESCAN_T[0] = time.monotonic()
+            self._json({"ok": True,
+                        "cameras": sorted(PROBE_CAPS),
+                        "removed": removed})
         else:
             self._json({"ok": False}, 400)
 
@@ -331,9 +356,11 @@ def engine(notify_done):
     cfg_path = os.path.join(REPO, "data", "board_config.json")
 
     # Probe cameras for the picker (released once setup is chosen).
-    for idx, cap in available_cameras():
-        PROBE_CAPS[idx] = (cap, threading.Lock(),
-                           {"t": 0.0, "jpg": None, "fail": 0})
+    # Same additive path as /cameras, under the same lock: the old
+    # inline loop raced the first auto-scan and opened some devices
+    # twice, leaving stale handles whose reads failed (Nov 3).
+    with PROBE_LOCK:
+        sync_probe_caps(PROBE_CAPS, try_open_camera)
     print(f"cameras: {sorted(PROBE_CAPS)}")
 
     while SETUP["choice"] is None:
@@ -357,6 +384,7 @@ def engine(notify_done):
     set_language(lang)
     cfg["voice_lang"] = lang
     print(f"voices: {voice_status()}")
+    prewarm_voice()  # shell + synth ready before the first instruction
     state_set(phrases=dict(PHRASE), voice_lang=lang, lang=lang)
     if mon_idx >= len(monitors):
         mon_idx = 0
@@ -453,24 +481,26 @@ def engine(notify_done):
     def snap():
         ok, frame = cap.read()
         if not ok:
-            return None, None, {}, None
+            return None, None, {"frame_ok": False}, None
         gray_mean = float(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).mean())
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
         res = landmarker.detect_for_video(mp_image, clock.now_ms())
         if not res.face_landmarks:
-            return None, None, {"brightness": gray_mean}, None
+            return None, None, {"frame_ok": True,
+                                "brightness": gray_mean}, None
         h, w = frame.shape[:2]
         lms = [(p.x * w, p.y * h) for p in res.face_landmarks[0]]
         feats, valid, _ = extract_features(lms)
         ear = mean_ear(lms)
         face_px = lms[454][0] - lms[234][0]
-        hud = {"brightness": gray_mean,
+        hud = {"frame_ok": True, "brightness": gray_mean,
                "distance_cm": estimate_distance_cm(face_px, w)}
         if ear is not None and ear_gate[0] is not None and ear < ear_gate[0]:
             feats = None
         return (feats if valid else None), ear, hud, lms
 
     calib, ear_open = [], []
+    calib_tags = []  # block tag per sample ('A'/'B'/'E'), for skips
     corrector, blink, hull = [None], [None], [None]
     guard, frozen = [None], [False]
     cooldown = SelectionCooldown(2.5)
@@ -525,43 +555,95 @@ def engine(notify_done):
         state_set(phase="calib", guide=None)
         plan = [(mleft + mw * fx, mtop + mh * fy, msg)
                 for fx, fy, msg in enrollment_plan(lang)]
+        # Warmup: one unrecorded centre dot absorbs the cold start
+        # (posture settling + voice surprise) so block A opens clean.
+        # Repeat offenders (446/379px first attempts, Nov 3) died here.
+        state_set(calib={"n": 0, "total": len(plan), "dot": [0.5, 0.5],
+                         "captured": False, "msg": plan[0][2]})
+        speak_sync(plan[0][2])
+        time.sleep(1.2)
+        prev_msg = plan[0][2]
+        consec_skips = [0]
         for n, (gx, gy, msg) in enumerate(plan, 1):
-            fb = FixationBuffer(min_frames=12)
+            # gate_dims=7: iris-only gating passed samples mid head
+            # swing (eyes on the dot, head moving), smearing the map.
+            fb = FixationBuffer(min_frames=12, gate_dims=7)
             state_set(calib={"n": n, "total": len(plan),
                              "dot": [(gx - mleft) / mw, (gy - mtop) / mh],
                              "captured": False, "msg": msg})
-            while not fb.ready():
-                feats, ear, _, _ = snap()
-                fb.add(feats)
-                if ear is not None:
-                    ear_open.append(ear)
+            if msg != prev_msg:
+                # Spoken once per instruction change (~7 utterances,
+                # not 43): the user fixates and cannot read. Capture
+                # starts after the voice ends plus a beat to settle
+                # into the new pose (capturing mid-motion poisoned
+                # block-B samples).
+                prev_msg = msg
+                print(f"calib says: {msg}")
+                speak_sync(msg)
+                time.sleep(1.2)
+            # One bad dot must never kill the session (dot 30 did,
+            # Nov 3): coach + retry the dot 3x, then skip it. Three
+            # dead dots in a row means the camera died, not a blink.
+            sample = None
+            for attempt in range(3):
+                t0 = time.perf_counter()
+                while not fb.ready() and time.perf_counter() - t0 < 5.0:
+                    feats, ear, _, _ = snap()
+                    fb.add(feats)
+                    if ear is not None:
+                        ear_open.append(ear)
+                sample = fb.average_stable() or fb.average_best()
+                if sample is not None:
+                    break
+                print(f"calib dot {n}: no face (try {attempt + 1}/3)")
+                if attempt == 0:
+                    speak_sync(s(lang, "face_speech"))
+            if sample is None:
+                consec_skips[0] += 1
+                print(f"calib dot {n}: skipped (no face)")
+                if consec_skips[0] >= 3:
+                    raise ValueError("calibration interrupted "
+                                     "(face lost - check the camera)")
+                continue
+            consec_skips[0] = 0
+            if not fb.ready():
+                print(f"calib dot {n}: unsteady, best-window sample")
             state_set(calib={"n": n, "total": len(plan),
                              "dot": [(gx - mleft) / mw, (gy - mtop) / mh],
                              "captured": True, "msg": msg})
-            calib.append((fb.average(), gx, gy))
+            calib.append((sample, gx, gy))
+            calib_tags.append("A" if n <= 9 else "E" if n > 34 else "B")
             append_event(session, "calib",
-                         {"features": fb.average(), "target": [gx, gy]})
+                         {"features": sample, "target": [gx, gy]})
             time.sleep(0.16)
 
     def refit():
+        # busy stays False during capture so the footer shows each
+        # dot's instruction; it flips True only for the actual fit.
+        # A retry REPLACES the bad attempt (accumulating both mixed
+        # a 403px map out of two failures, Nov 3).
+        del calib[:]
+        del calib_tags[:]
         calibrate()
         if len(calib) < 16:
             raise ValueError(f"calibration interrupted ({len(calib)})")
+        state_set(busy=True)
         samples = [(f, x, y) for f, x, y in calib]
         matrix = fit_calibration(samples)
         append_event(session, "calibration_matrix", {"matrix": matrix})
         means = [sum(s[0][j] for s in samples) / len(samples) for j in range(7)]
-        return matrix, means, samples
+        state_set(busy=False)
+        return matrix, means, samples, list(calib_tags)
 
     def refit_all():
-        matrix, means, samples = refit()
+        matrix, means, samples, tags = refit()
         errs = []
         for feats, gx, gy in samples:
             px, py = map_to_screen(feats, matrix)
             errs.append(((px - gx) ** 2 + (py - gy) ** 2) ** 0.5)
         err = sum(errs) / len(errs)
-        nat = natural_block_indices(len(errs))
-        err_nat = sum(errs[i] for i in nat) / len(nat)
+        nat_errs = [e for e, t in zip(errs, tags) if t in ("A", "E")]
+        err_nat = sum(nat_errs) / len(nat_errs) if nat_errs else err
         print(f"calibration resub={err:.0f}px (natural {err_nat:.0f}px)")
         append_event(session, "calibration_quality",
                      {"resub_px": err, "resub_natural_px": err_nat})
@@ -571,8 +653,17 @@ def engine(notify_done):
         if corrector[0] is None and err_nat > 300 and not state.get("_retried"):
             state["_retried"] = True
             print("initial fit weak - hold still, enrolling again...")
+            speak(s(lang, "retry_speech"))
+            time.sleep(2.5)
             refit_all()
             return
+        if corrector[0] is None and err_nat > 300:
+            # Second failure: accept (can't loop forever) but say so
+            # out loud - a silent 349px map looks like "the app
+            # decalibrates" when small targets start missing.
+            print(f"*** WEAK MAP ACCEPTED ({err_nat:.0f}px natural) - "
+                  f"settle, then press R ***")
+            speak(s(lang, "weak_speech"))
         corrector[0] = BiasCorrector(lambda f: map_to_screen(f, matrix),
                                      means, certain_bias_only=True,
                                      trust_px=15.0)
@@ -591,12 +682,28 @@ def engine(notify_done):
         ear_gate[0] = blink[0].ear_threshold
         print(f"EAR: open_median={med:.3f} threshold={blink[0].ear_threshold:.3f}")
 
-    state_set(busy=True)
-    refit_all()
+    state_set(busy=False)
+    try:
+        refit_all()
+    except ValueError as e:
+        print(f"calibration failed: {e}")
+        for closer in (cap.release, landmarker.close):
+            try:
+                closer()
+            except Exception:
+                pass
+        notify_done()
+        return
+    # One breath between enrollment and the board: a single big line
+    # teaching the hold (spoken + shown), initial run only.
+    state_set(busy=False, phase="holdinfo")
+    speak(s(lang, "hold_speech"))
+    time.sleep(5.0)
     state_set(busy=False, phase="board")
     state["started"] = time.perf_counter()
     smooth = {"x": None, "y": None}
-    app_dwell = AppDwell()
+    gaze_hist = []  # (t, x, y) fresh on-screen points for hold-clicks
+    no_frame = [0]  # consecutive dead-camera frames (vs lost face)
     gate = JumpGate(agree_px=250.0)
     feat_window, feat_history, kb_history, ear_stream = [], [], [], []
     last_hl = [None]
@@ -617,7 +724,7 @@ def engine(notify_done):
 
     def do_recalibrate(now):
         nonlocal smooth, gate
-        state_set(busy=True, phase="calib")
+        state_set(busy=False, phase="calib")
         append_event(session, "recalibrate", {})
         print("recalibrating...")
         old_gate = ear_gate[0]
@@ -681,6 +788,29 @@ def engine(notify_done):
         armed.update(label=None, until=0.0)
         ok, detail = open_app(entry)
         print(f"app launch {label}: ok={ok} ({detail})")
+        if ok:
+            # Browsers open wherever they please; gaze lives on the
+            # chosen monitor. If the new window landed elsewhere, move
+            # it over and maximize (threaded: the loop never stalls).
+            def _place():
+                time.sleep(2.0)
+                try:
+                    hwnd, rect = foreground_rect()
+                    title = foreground_title()
+                    if hwnd and rect and "mirada" not in title.lower():
+                        if center_on_monitor(rect, (mleft, mtop, mw, mh)):
+                            print(f"app window already on gaze monitor "
+                                  f"({title[:40]!r})")
+                        else:
+                            place_on_monitor(hwnd, (mleft, mtop, mw, mh))
+                            print(f"app window moved to gaze monitor "
+                                  f"({title[:40]!r})")
+                    if park_cursor((mleft, mtop, mw, mh)):
+                        print("cursor parked on gaze monitor")
+                except Exception as e:
+                    print(f"app window place failed: {e!r}")
+
+            threading.Thread(target=_place, daemon=True).start()
         if source == "gaze":
             apply_anchor(label, apps_cells, now)
         page["cur"] = "frases"
@@ -824,9 +954,39 @@ def engine(notify_done):
             continue
         feats, ear, hud, lms = snap()
         now = time.perf_counter()
+        if not (hud or {}).get("frame_ok", True):
+            # Frames stopped entirely (twice on Nov 3, mid-session):
+            # that is the DEVICE, not a lost face. Announce, log,
+            # and keep trying to reopen it - a take shouldn't die
+            # on a USB glitch.
+            no_frame[0] += 1
+            if no_frame[0] == 90:
+                print("CAMERA LOST: no frames - will keep trying, "
+                      "check the USB cable")
+                append_event(session, "camera_lost", {})
+            if no_frame[0] >= 90 and (no_frame[0] - 90) % 450 == 0:
+                print(f"camera reopen: trying index {cam_idx} again "
+                      f"(verify the picture - a replug can reshuffle!)")
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+                try:
+                    cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                except Exception as e:
+                    print(f"camera reopen failed: {e!r}")
+        else:
+            if no_frame[0] >= 90:
+                print("camera back - frames flowing")
+                append_event(session, "camera_back", {})
+            no_frame[0] = 0
         frontal = False
         face_msg = ""
-        if lms is not None:
+        if no_frame[0] >= 90:
+            face_msg = s(lang, "cam_lost")
+        elif lms is not None:
             fw = lms[454][0] - lms[234][0]
             cx = (lms[454][0] + lms[234][0]) / 2.0
             frontal = fw > 0 and abs(lms[1][0] - cx) / fw < 0.35
@@ -893,31 +1053,57 @@ def engine(notify_done):
         kb_history.append((now, hl))
         while len(kb_history) > 90:
             kb_history.pop(0)
+        # Fresh = a face this frame. Stale smooth (face turned/lost)
+        # used to freeze the ring and pile dwell clicks on one dead
+        # centroid (2215,1015 twice, Nov 3): publish nothing then.
+        fresh = feats is not None
         gaze_frac = None
-        if smooth["x"] is not None:
+        if fresh and smooth["x"] is not None:
             gaze_frac = [(smooth["x"] - mleft) / mw, (smooth["y"] - mtop) / mh]
         dwell_frac = 0.0
         if state_get().get("launched"):
-            # Eye-mouse inside the opened app: a RESTING gaze clicks
-            # (AppDwell), never a blink - blinking while reading fired
-            # everywhere. Board cells never fire here (122657 extras).
-            if smooth["x"] is not None:
-                rel_x = smooth["x"] - mleft
-                rel_y = smooth["y"] - mtop
-                # Floating dock: two 200x124 tiles at top-right
-                # (bbox mw-428..mw, 16..140; see tile_rects). The watcher
-                # owns that corner, with a 20 px margin.
-                if rel_x > mw - 448 and rel_y < 140:
-                    app_dwell.reset()
-                elif app_dwell.update(smooth["x"], smooth["y"], now):
-                    cx, cy = app_dwell.centroid
-                    click_at(cx, cy)
-                    append_event(session, "app_click",
-                                 {"x": round(cx), "y": round(cy)})
-                    print(f"app click at ({cx:.0f},{cy:.0f})")
-                    app_dwell.reset()
-                else:
-                    dwell_frac = app_dwell.progress(now)
+            # Eye-mouse inside the opened app: look freely, CLOSE to
+            # click (0.4 s hold at the pre-closure gaze point, same
+            # grammar as the board). Resting to click was the Midas
+            # touch - reading YouTube fired 11 unintended clicks in a
+            # minute (Nov 3). Board cells never fire here (122657).
+            on_screen = (gaze_frac is not None
+                         and -0.05 <= gaze_frac[0] <= 1.05
+                         and -0.05 <= gaze_frac[1] <= 1.05)
+            if fresh and on_screen and smooth["x"] is not None:
+                gaze_hist.append((now, smooth["x"], smooth["y"]))
+                while len(gaze_hist) > 120:
+                    gaze_hist.pop(0)
+            # The ring arc shows the hold charging (honest: it fills
+            # only while the eyes are actually closed).
+            if blink[0] and blink[0].holding():
+                dwell_frac = min(1.0, blink[0].hold_time(now)
+                                 / blink[0].hold_s)
+            if select_event:
+                # Median over open-eye gaze (0.45-0.9 s back): a single
+                # past point jitters ~280 px live, the median lands.
+                win = [(x, y) for t, x, y in gaze_hist
+                       if now - 0.9 <= t <= now - 0.45]
+                if win:
+                    xs = sorted(x for x, _y in win)
+                    ys = sorted(y for _x, y in win)
+                    cx, cy = clamp_xy(xs[len(xs) // 2],
+                                      ys[len(ys) // 2],
+                                      (mleft, mtop, mw, mh))
+                    # Floating dock corner belongs to the watcher
+                    # (tile zones); a hold aimed there clicks nothing.
+                    if not (cx - mleft > mw - 448 and cy - mtop < 140):
+                        RING_HIDDEN.clear()
+                        RING_HIDE.set()
+                        RING_HIDDEN.wait(0.3)
+                        try:
+                            click_at(cx, cy)
+                        finally:
+                            RING_HIDE.clear()
+                        append_event(session, "app_click",
+                                     {"x": round(cx), "y": round(cy),
+                                      "via": "hold"})
+                        print(f"app click (hold) at ({cx:.0f},{cy:.0f})")
         elif select_event:
             past = [h for t, h in kb_history if t <= now - 0.45]
             target = past[-1] if past else hl
@@ -936,6 +1122,10 @@ def engine(notify_done):
         time.sleep(1 / 60)
 
     cap.release()
+    try:
+        landmarker.close()  # before the executor dies, else __del__ rages
+    except Exception:
+        pass
     notify_done()
 
 

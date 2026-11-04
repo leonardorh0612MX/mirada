@@ -37,10 +37,43 @@ class TestBoardApp(unittest.TestCase):
 
         img = render_tile("MIRADA", "BACK", "\u2190")
         self.assertEqual(img.size, (TILE_W, TILE_H))
-        self.assertEqual(img.mode, "RGBA")
-        self.assertEqual(img.getpixel((0, 0))[3], 0)  # round corners
+        self.assertEqual(img.mode, "RGB")
+        self.assertEqual(img.getpixel((0, 0)), (255, 0, 255))
         cx, cy = TILE_W // 2, TILE_H // 2
-        self.assertEqual(img.getpixel((cx, cy))[3], 255)  # solid body
+        self.assertNotEqual(img.getpixel((cx, cy)), (255, 0, 255))
+
+    def test_render_tile_has_no_pink_fringe(self):
+        # Regression (Nov 3): soft-alpha edges blended against the
+        # magenta label and printed as pink particles. The silhouette
+        # is hard now: no near-magenta pixel may survive.
+        from app.board_app import render_tile
+
+        img = render_tile("MIRADA", "BACK", "\u2190")
+        fringe = [px for px in img.getdata()
+                  if px != (255, 0, 255)
+                  and px[0] > 120 and px[2] > 120 and px[1] < 120]
+        self.assertEqual(fringe, [])
+
+    def test_render_ring_shape(self):
+        from app.board_app import render_ring
+
+        img = render_ring(0.0)
+        self.assertEqual(img.size, (120, 120))
+        self.assertEqual(img.mode, "RGB")
+        self.assertEqual(img.getpixel((0, 0)), (255, 0, 255))
+        # White centre dot survives the flattening.
+        self.assertEqual(img.getpixel((60, 60)), (255, 255, 255))
+
+    def test_render_ring_arc_and_no_fringe(self):
+        from app.board_app import render_ring
+
+        plain = render_ring(0.0)
+        arc = render_ring(0.5)
+        self.assertNotEqual(list(plain.getdata()), list(arc.getdata()))
+        fringe = [px for px in arc.getdata()
+                  if px != (255, 0, 255)
+                  and px[0] > 120 and px[2] > 120 and px[1] < 120]
+        self.assertEqual(fringe, [])
 
     def test_monitor_rect_clamps(self):
         from app.board_app import monitor_rect
@@ -50,6 +83,50 @@ class TestBoardApp(unittest.TestCase):
         self.assertEqual(monitor_rect(mons, 9), (1920, 0, 1920, 1080))
         self.assertEqual(monitor_rect(mons, -1), (0, 0, 1920, 1200))
         self.assertEqual(monitor_rect([], 0), (0, 0, 1280, 800))
+
+    def test_tile_dwell_enter_fire(self):
+        from app.board_app import tile_dwell_next
+
+        mem = {"zone": None, "since": 0.0, "pending": None,
+               "pending_since": 0.0}
+        ev, mem = tile_dwell_next(mem, "kb", 10.0)
+        self.assertIsNone(ev)  # entering grace, not yet armed
+        ev, mem = tile_dwell_next(mem, "kb", 10.13)
+        self.assertEqual(ev, "started")
+        ev, mem = tile_dwell_next(mem, "kb", 10.5)
+        self.assertIsNone(ev)
+        ev, mem = tile_dwell_next(mem, "kb", 10.94)
+        self.assertEqual(ev, "fired")
+
+    def test_tile_dwell_edge_jitter_keeps_timer(self):
+        # Regression (Nov 3): 7 stillborn "kb started" in a row -
+        # border flicker restarted the 0.8 s timer forever.
+        from app.board_app import tile_dwell_next
+
+        mem = {"zone": None, "since": 0.0, "pending": None,
+               "pending_since": 0.0}
+        _, mem = tile_dwell_next(mem, "kb", 10.0)
+        ev, mem = tile_dwell_next(mem, "kb", 10.13)
+        self.assertEqual(ev, "started")
+        ev, mem = tile_dwell_next(mem, None, 10.5)  # brief flicker out
+        self.assertIsNone(ev)
+        self.assertEqual(mem["zone"], "kb")
+        ev, mem = tile_dwell_next(mem, "kb", 10.6)
+        self.assertIsNone(ev)  # no second "started"
+        ev, _mem = tile_dwell_next(mem, "kb", 10.95)
+        self.assertEqual(ev, "fired")
+
+    def test_tile_dwell_leaves_after_grace(self):
+        from app.board_app import tile_dwell_next
+
+        mem = {"zone": "kb", "since": 10.0, "pending": None,
+               "pending_since": 0.0}
+        ev, mem = tile_dwell_next(mem, None, 10.5)
+        self.assertIsNone(ev)
+        self.assertEqual(mem["zone"], "kb")
+        ev, mem = tile_dwell_next(mem, None, 10.9)
+        self.assertIsNone(ev)
+        self.assertIsNone(mem["zone"])
 
 
 if __name__ == "__main__":

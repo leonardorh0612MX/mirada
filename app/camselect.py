@@ -54,7 +54,7 @@ def sync_probe_caps(caps, opener, n=5, skip=frozenset()):
     caps: {idx: (cap, lock, cache)} mutated in place; opener(idx) is
     try_open_camera in production, a fake in tests. Additive only:
     never closes anything, so a slow rescan can't steal the live feed.
-    skip holds quarantined indices (dropped for unreadability).
+    skip holds indices to ignore this round.
     """
     import threading
 
@@ -63,9 +63,41 @@ def sync_probe_caps(caps, opener, n=5, skip=frozenset()):
             continue
         cap = opener(i)
         if cap is not None:
-            caps[i] = (cap, threading.Lock(),
-                       {"t": 0.0, "jpg": None, "fail": 0})
+            caps[i] = (cap, threading.Lock(), {"t": 0.0, "jpg": None})
     return sorted(caps)
+
+
+def prune_dead_caps(caps, tries=3):
+    """Drop cameras that stopped streaming. Returns sorted removed indices.
+
+    Manual-rescan helper (setup screen): for each known index, read under
+    its lock up to `tries` times; a single good frame keeps it. DSHOW
+    devices stutter when siblings open, so one failure means nothing -
+    only sustained unreadability drops the card (regression: the old
+    auto-drop ate a working Logitech on 4 transient failures, Nov 3).
+    Removed caps are released. Mutates caps in place.
+    """
+    removed = []
+    for idx in sorted(caps):
+        cap, lock, _cache = caps[idx]
+        alive = False
+        with lock:
+            for _ in range(max(tries, 1)):
+                try:
+                    ok, frame = cap.read()
+                except Exception:
+                    ok, frame = False, None
+                if ok and frame is not None:
+                    alive = True
+                    break
+        if not alive:
+            try:
+                cap.release()
+            except Exception:
+                pass
+            del caps[idx]
+            removed.append(idx)
+    return removed
 
 
 def available_monitors():

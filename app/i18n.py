@@ -57,7 +57,14 @@ FUNCS = {
 
 STR = {
     "en": {
-        "enroll_natural": "look at the dot · head and eyes together",
+        "enroll_natural": "look at the dot · move your head just a little",
+        "retry_speech": ("Let's try again - sit still, "
+                         "move your head just a little"),
+        "weak_speech": ("Calibration is weak - settle in, "
+                        "then press R to retry"),
+        "face_speech": "I lost your face - look at the dot",
+        "hold_speech": ("Look at a cell, then close your eyes "
+                        "for half a second - it speaks"),
         "enroll_suffix": "· eyes on the dot",
         "pose_center": "face centered",
         "pose_left": "turn your head left",
@@ -67,7 +74,7 @@ STR = {
         "tk_step1": "STEP 1 · YOUR FACE",
         "tk_step1_sub": "get comfortable · sit as you always do",
         "tk_calib": "CALIBRATION · {}/{}",
-        "tk_dot": "look at the green dot · head and eyes together",
+        "tk_dot": "look at the green dot · move your head just a little",
         "tk_saved": "point saved",
         "tk_voice": "Voice",
         "tk_phrases": "Phrases per cell",
@@ -75,6 +82,7 @@ STR = {
         "tk_close": "Close",
         "face_turn": "face the screen",
         "face_gone": "NO FACE - come back to the camera",
+        "cam_lost": "CAMERA LOST - check the USB cable",
         "guide_search": "finding your face…",
         "guide_ok": "that's your posture · starting…",
         "guide_fix": "return to your comfortable posture",
@@ -87,7 +95,14 @@ STR = {
         "kb_sub": "TYPE",
     },
     "es": {
-        "enroll_natural": "mira el punto · cabeza y ojos juntos",
+        "enroll_natural": "mira el punto · mueve la cabeza solo un poco",
+        "retry_speech": ("Intentemos de nuevo - quédate quieto, "
+                         "mueve la cabeza solo un poco"),
+        "weak_speech": ("La calibración quedó débil - acomódate "
+                        "y pulsa R para reintentar"),
+        "face_speech": "Perdí tu rostro - mira el punto",
+        "hold_speech": ("Mira una celda y cierra los ojos "
+                        "medio segundo - habla"),
         "enroll_suffix": "· ojos en el punto",
         "pose_center": "rostro al centro",
         "pose_left": "gira la cabeza a la izquierda",
@@ -97,7 +112,7 @@ STR = {
         "tk_step1": "PASO 1 · TU ROSTRO",
         "tk_step1_sub": "ponte cómodo · así como te sientas siempre",
         "tk_calib": "CALIBRACIÓN · {}/{}",
-        "tk_dot": "mira el punto verde · cabeza y ojos juntos",
+        "tk_dot": "mira el punto verde · mueve la cabeza solo un poco",
         "tk_saved": "punto guardado",
         "tk_voice": "Voz",
         "tk_phrases": "Frases por celda",
@@ -105,6 +120,7 @@ STR = {
         "tk_close": "Cerrar",
         "face_turn": "mira a la pantalla",
         "face_gone": "SIN ROSTRO - vuelve a la cámara",
+        "cam_lost": "CÁMARA PERDIDA - revisa el cable USB",
         "guide_search": "busca tu rostro…",
         "guide_ok": "esa es tu postura · empezamos…",
         "guide_fix": "vuelve a tu postura cómoda",

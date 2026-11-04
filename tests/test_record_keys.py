@@ -101,6 +101,39 @@ class TestFixationBuffer(unittest.TestCase):
         self.assertAlmostEqual(avg[0], 10.0005, places=3)
         self.assertAlmostEqual(avg[1], 1.0)
 
+    def test_head_motion_blocks_ready(self):
+        # Regression (Nov 3): iris still + head swinging passed the
+        # iris-only gate and smeared enrollment samples. gate_dims=7
+        # sees the swing.
+        fb = self.mod.FixationBuffer(min_frames=4, gate_dims=7)
+        for v in (0.0, 0.0, 0.5, 0.5):
+            fb.add([0.0, 0.0, 0.0, 0.0, v, 0.0, 0.0])
+        self.assertFalse(fb.ready())
+        legacy = self.mod.FixationBuffer(min_frames=4)
+        for v in (0.0, 0.0, 0.5, 0.5):
+            legacy.add([0.0, 0.0, 0.0, 0.0, v, 0.0, 0.0])
+        self.assertTrue(legacy.ready())
+
+    def test_average_stable_uses_gated_window(self):
+        fb = self.mod.FixationBuffer(min_frames=4)
+        for v in (9.0, 9.0, 0.0, 0.0, 0.0, 0.0):
+            fb.add([v, 0.0])
+        self.assertTrue(fb.ready())
+        self.assertAlmostEqual(fb.average_stable()[0], 0.0)
+
+    def test_average_best_picks_still_window(self):
+        fb = self.mod.FixationBuffer(min_frames=4)
+        for v in (0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.5):
+            fb.add([v, 0.0])
+        self.assertFalse(fb.ready())
+        self.assertIsNone(fb.average_stable())
+        self.assertAlmostEqual(fb.average_best()[0], 0.0)
+
+    def test_average_best_none_when_starved(self):
+        fb = self.mod.FixationBuffer(min_frames=4)
+        fb.add([1.0, 2.0])
+        self.assertIsNone(fb.average_best())
+
 
 if __name__ == "__main__":
     unittest.main()

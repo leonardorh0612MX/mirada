@@ -27,6 +27,12 @@ class TestVoices(unittest.TestCase):
         self.assertEqual(pick_voices([("fr-FR", "Hortense")]),
                          {"es": None, "en": None})
 
+    def test_clean_utterance_one_line_no_quotes(self):
+        from app.speak import clean_utterance
+
+        self.assertEqual(clean_utterance('say "hi"\nnow'),
+                         "say hi now")
+
 
 class TestVoiceRetry(unittest.TestCase):
     def tearDown(self):

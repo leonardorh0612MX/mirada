@@ -121,28 +121,36 @@ class FixationBuffer:
     drift mid-window splits the halves apart.
     """
 
-    def __init__(self, min_frames=10, tail_n=40, stability=0.04, iris_dims=4):
+    def __init__(self, min_frames=10, tail_n=40, stability=0.04, iris_dims=4,
+                 gate_dims=None):
         self.buf = []
         self.min_frames = min_frames
         self.tail_n = tail_n
         self.stability = stability
         self.iris_dims = iris_dims
+        # gate_dims gates the first N dims instead of iris_dims. The
+        # head-follow enrollment style holds the iris still while the
+        # head swings, so iris-only gating passed mid-motion samples
+        # (Nov 3: 446px enrollments); the board gates all 7 dims.
+        self.gate_dims = iris_dims if gate_dims is None else gate_dims
 
     def add(self, feats):
         if feats is not None:
             self.buf.append(feats)
 
+    def _split_disagree(self, win):
+        half = len(win) // 2
+        worst = 0.0
+        for j in range(min(self.gate_dims, len(win[0]))):
+            m1 = sum(f[j] for f in win[:half]) / half
+            m2 = sum(f[j] for f in win[half:]) / (len(win) - half)
+            worst = max(worst, abs(m1 - m2))
+        return worst
+
     def ready(self):
         if len(self.buf) < self.min_frames:
             return False
-        win = self.buf[-self.min_frames:]
-        half = len(win) // 2
-        for j in range(min(self.iris_dims, len(win[0]))):
-            m1 = sum(f[j] for f in win[:half]) / half
-            m2 = sum(f[j] for f in win[half:]) / (len(win) - half)
-            if abs(m1 - m2) > self.stability:
-                return False
-        return True
+        return self._split_disagree(self.buf[-self.min_frames:]) <= self.stability
 
     def average(self):
         if not self.ready():
@@ -150,6 +158,37 @@ class FixationBuffer:
         tail = self.buf[-self.tail_n:]
         return [sum(f[j] for f in tail) / len(tail)
                 for j in range(len(tail[0]))]
+
+    def average_stable(self):
+        """Mean over the gated window only (None unless ready).
+
+        average() blends the last tail_n frames, which smears motion
+        from before the window stabilized; enrollment samples want
+        the stable window and nothing else.
+        """
+        if not self.ready():
+            return None
+        win = self.buf[-self.min_frames:]
+        return [sum(f[j] for f in win) / len(win)
+                for j in range(len(win[0]))]
+
+    def average_best(self):
+        """Mean over the most stable min_frames window buffered.
+
+        Bounded-wait fallback: when the user never holds still long
+        enough, the least-moving window beats the freshest one. None
+        when fewer than min_frames buffered.
+        """
+        if len(self.buf) < self.min_frames:
+            return None
+        best, best_d = None, None
+        for i in range(len(self.buf) - self.min_frames + 1):
+            win = self.buf[i:i + self.min_frames]
+            d = self._split_disagree(win)
+            if best_d is None or d < best_d:
+                best, best_d = win, d
+        return [sum(f[j] for f in best) / len(best)
+                for j in range(len(best[0]))]
 
 
 def new_key_state():

@@ -126,6 +126,17 @@
     padding: 10px 26px; border-radius: 999px; transition: all .25s var(--spring); }
   .langseg button.sel { background: var(--coffee); color: #fff;
     box-shadow: 0 10px 24px -12px rgba(29,29,31,.6); }
+  .group h3.split { display: flex; align-items: center; gap: 12px; }
+  #rescan { width: 34px; height: 34px; border-radius: 50%;
+    border: 2px solid var(--line); background: var(--card);
+    color: var(--coffee); font-size: 19px; font-weight: 800; line-height: 1;
+    cursor: pointer; display: inline-flex; align-items: center;
+    justify-content: center; padding-bottom: 2px;
+    box-shadow: 0 12px 26px -14px rgba(29,29,31,.5), inset 0 1px 0 #fff;
+    transition: transform .2s var(--spring), border-color .2s; }
+  #rescan:hover { transform: translateY(-2px); border-color: var(--coffee); }
+  #rescan.spinning { animation: rot .8s linear infinite; pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) { #rescan.spinning { animation: none; } }
 
   /* ---------- guide ---------- */
   #guide { align-items: center; justify-content: center; text-align: center; }
@@ -167,6 +178,14 @@
   .spinbig { position: absolute; left: 50%; top: 50%; width: 74px; height: 74px;
     margin: -37px 0 0 -37px; border-radius: 50%; border: 6px solid var(--line);
     border-top-color: var(--caramel); animation: rot .9s linear infinite; display: none; }
+
+  /* ---------- holdinfo ---------- */
+  #holdinfo { align-items: center; justify-content: center; text-align: center; }
+  #holdinfo h2 { font-size: clamp(34px, 5vw, 60px); letter-spacing: -.03em;
+    font-weight: 800; color: var(--caramel); margin-bottom: 26px; }
+  #holdinfo .big { font-size: clamp(26px, 3.6vw, 46px); font-weight: 650;
+    color: var(--coffee); letter-spacing: -.01em; max-width: 20em;
+    margin: 0 auto; line-height: 1.35; animation: cardin .5s var(--spring); }
 
   /* ---------- board ---------- */
   #board { background: var(--dark); }
@@ -269,7 +288,7 @@
     </div>
     <div class="row">
       <div class="group"><h3 data-i18n="monitor">Monitor</h3><div class="cards" id="mons"></div></div>
-      <div class="group"><h3 data-i18n="camera">Camera · move to tell them apart</h3>
+      <div class="group"><h3 class="split"><span data-i18n="camera">Camera · move to tell them apart</span><button id="rescan" type="button" title="Rescan devices">⟳</button></h3>
         <div class="cards" id="cams"></div></div>
     </div>
     <button id="continue" disabled data-i18n="continue">Continue →</button>
@@ -302,7 +321,15 @@
   <div class="count" id="ccount">CALIBRATION</div>
   <div id="dot"></div>
   <div class="spinbig" id="cspin"></div>
-  <div class="foot" id="cfoot" data-i18n="calib_foot">look at the dot · head and eyes together</div>
+  <div class="foot" id="cfoot" data-i18n="calib_foot">look at the dot · move your head just a little</div>
+</section>
+
+<section class="screen marble" id="holdinfo">
+  <div class="liquid"><i></i><i></i><i></i></div>
+  <div style="position:relative">
+    <h2 data-i18n="hold_title">One thing first</h2>
+    <p class="big" data-i18n="hold_body">Look at a cell · CLOSE your eyes ~0.4 s · it speaks</p>
+  </div>
 </section>
 
 <section class="screen" id="board">
@@ -349,7 +376,7 @@
       guide_title: "Your comfortable posture",
       guide_search: "finding your face…", chip_face: "Face",
       chip_light: "Light", chip_dist: "Distance",
-      calib_foot: "look at the dot · head and eyes together",
+      calib_foot: "look at the dot · move your head just a little",
       bar_hint: "look + hold to speak…", done_title: "Thank you.",
       done_p: "Session finished. You can close this tab.",
       modal_title: "Settings",
@@ -367,7 +394,10 @@
       done_count: "Session finished · {0} phrases spoken. You can close this tab.",
       bar_app: "in the app ({0}) · return with the ← MIRADA circle",
       bar_armed: "open {0}? hold your gaze again to confirm",
-      bar_outside: "gaze outside trusted area", stat_light: "light" },
+      bar_outside: "gaze outside trusted area", stat_light: "light",
+      rescan_title: "Rescan devices",
+      hold_title: "One thing first",
+      hold_body: "Look at a cell · CLOSE your eyes ~0.4 s · it speaks" },
     es: { setup_title: "Elige tu pantalla y tu cámara",
       setup_sub: "Haz click en cada una. Los dispositivos recién conectados aparecen solos.",
       monitor: "Monitor", camera: "Cámara · muévete para distinguirlas",
@@ -376,7 +406,7 @@
       guide_title: "Tu postura cómoda",
       guide_search: "busca tu rostro…", chip_face: "Rostro",
       chip_light: "Luz", chip_dist: "Distancia",
-      calib_foot: "mira el punto · cabeza y ojos juntos",
+      calib_foot: "mira el punto · mueve la cabeza solo un poco",
       bar_hint: "mira + hold para hablar…", done_title: "Gracias.",
       done_p: "Sesión terminada. Ya puedes cerrar esta pestaña.",
       modal_title: "Ajustes",
@@ -394,7 +424,10 @@
       done_count: "Sesión terminada · {0} frases dichas. Ya puedes cerrar esta pestaña.",
       bar_app: "en la app ({0}) · vuelve con el círculo ← MIRADA",
       bar_armed: "¿abrir {0}? mantén la mirada otra vez para confirmar",
-      bar_outside: "mirada fuera del área confiable", stat_light: "luz" }
+      bar_outside: "mirada fuera del área confiable", stat_light: "luz",
+      rescan_title: "Reexplorar dispositivos",
+      hold_title: "Primero, una cosa",
+      hold_body: "Mira una celda · CIERRA los ojos ~0.4 s · habla" }
   };
   window._lang = "en";
   function T(key) {
@@ -410,6 +443,7 @@
     document.querySelectorAll(".langseg button").forEach(function (b) {
       b.classList.toggle("sel", b.getAttribute("data-lang") === window._lang);
     });
+    $("rescan").title = T("rescan_title");
   }
   document.querySelectorAll(".langseg button").forEach(function (b) {
     b.onclick = function () {
@@ -417,13 +451,13 @@
       applyLang(); loadSetup();
     };
   });
-  var screens = ["splash", "setup", "guide", "calib", "board", "done"];
+  var screens = ["splash", "setup", "guide", "calib", "holdinfo", "board", "done"];
   function show(id) {
     screens.forEach(function (s) { $(s).classList.toggle("on", s === id); });
   }
 
   /* splash typewriter */
-  var NAME = "un proyecto de Leonardo Rodríguez Hernández";
+  var NAME = "by Leonardo Rodríguez Hernández · for the Meta Global AI Hackathon";
   var ti = 0;
   var typer = setInterval(function () {
     $("type").textContent = NAME.slice(0, ++ti);
@@ -506,8 +540,9 @@
           if (img) img.src = "/cam/" + card.dataset.idx + ".jpg?t=" + Date.now();
         });
         /* Hot-plug: re-read devices every ~3 s while setup is open.
-           New hardware appears (and unplugged vanishes) without a
-           restart; rebuild only when the set actually changes. */
+           New hardware appears on its own; unplugged cards stay put
+           until the ⟳ button (auto-drop ate a working camera once).
+           Rebuild only when the set actually changes. */
         if (++tick % 8 || polling || !$("setup").classList.contains("on")) return;
         polling = true;
         Promise.all([
@@ -532,6 +567,17 @@
         body: JSON.stringify({ kind: "fullscreen" }) });
     }
   });
+  /* Manual rescan: prune dead feeds, pick up plugged hardware.
+     DSHOW opens are slow, so the button spins until done. */
+  $("rescan").onclick = function () {
+    var btn = $("rescan");
+    btn.classList.add("spinning");
+    fetch("/action", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "rescan" }) })
+      .then(function () { loadSetup(); })
+      .catch(function () {})
+      .finally(function () { btn.classList.remove("spinning"); });
+  };
   $("continue").onclick = function () {
     if (camTimer) { clearInterval(camTimer); camTimer = null; }
     $("leaving").classList.add("on");
@@ -709,6 +755,7 @@
         : (c.msg || T("calib_foot"));
       return;
     }
+    if (st.phase === "holdinfo") { show("holdinfo"); return; }
     if (st.phase === "board") {
       show("board");
       window._kbV = st.kb_v || 0;

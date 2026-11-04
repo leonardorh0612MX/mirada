@@ -27,8 +27,9 @@ except ImportError:
           ".\\.venv\\Scripts\\python.exe -m pip install pywebview")
     raise SystemExit(2)
 
-from app.board_web import (FS_EVENT, KB_EVENT, RETURN_EVENT, SETUP,  # noqa: E402
-                           Handler, Server, engine, state_get)
+from app.board_web import (FS_EVENT, KB_EVENT, RETURN_EVENT,  # noqa: E402
+                           RING_HIDE, RING_HIDDEN, SETUP, Handler, Server,
+                           engine, state_get)
 from tools.record_session import list_monitors, set_dpi_aware  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -67,25 +68,68 @@ def in_rect(x, y, rect):
     return rx <= x <= rx + rw and ry <= y <= ry + rh
 
 
-def render_tile(main, sub, mark=""):
-    """Glass dock tile as an RGBA image (TILE_W x TILE_H). Pure (tested).
+ENTER_S, LEAVE_S, FIRE_S = 0.12, 0.35, 0.8
 
-    Rounded dark gradient, top gloss, letterspaced caps, transparent
-    corners - rendered at 2x and downscaled for crisp text. Shown on a
-    -transparentcolor window, so zero rectangle bleeds onto the app.
+
+def tile_dwell_next(mem, zone, now):
+    """Next tile-zone dwell step. Pure (tested).
+
+    mem: {"zone", "since", "pending", "pending_since"}. zone is the
+    raw zone this tick ("back"/"kb"/None). Returns (event, mem) with
+    event "started"/"fired"/None. Entering grace 0.12 s (a passing
+    glance doesn't arm), leaving grace 0.35 s (edge jitter must not
+    restart the 0.8 s timer - 7 stillborn "kb started" in a row did,
+    Nov 3), fire at 0.8 s committed.
+    """
+    mem = dict(mem)
+    if zone is None:
+        if mem["zone"] is not None:
+            if mem["pending"] != "clear":
+                mem.update(pending="clear", pending_since=now)
+            elif now - mem["pending_since"] >= LEAVE_S:
+                mem.update(zone=None, pending=None)
+        else:
+            mem["pending"] = None
+        return None, mem
+    if mem["zone"] != zone:
+        if mem["pending"] != zone:
+            mem.update(pending=zone, pending_since=now)
+            return None, mem
+        if now - mem["pending_since"] >= ENTER_S:
+            mem.update(zone=zone, pending=None, since=now)
+            return "started", mem
+        return None, mem
+    mem["pending"] = None
+    if now - mem["since"] >= FIRE_S:
+        mem["zone"] = None
+        return "fired", mem
+    return None, mem
+
+
+def render_tile(main, sub, mark=""):
+    """Glass dock tile as an RGB image (TILE_W x TILE_H). Pure (tested).
+
+    Rounded dark gradient, top gloss, letterspaced caps, pure-magenta
+    corners punched by the window's -transparentcolor. Rendered at 2x
+    and downscaled for crisp text; the silhouette is then thresholded
+    to a hard edge, because colorkey transparency cannot do soft
+    alpha - semi-transparent edge pixels used to blend against the
+    magenta label and showed as a pink fringe (Nov 3). Drawn on RGBA
+    so the gloss/outline alphas actually blend (on RGB they came out
+    solid white, including the streak across the top margin).
     """
     from PIL import Image, ImageDraw, ImageFont
 
     S = 2
     W, H = TILE_W * S, TILE_H * S
-    rgb = Image.new("RGB", (W, H), (0, 0, 0))
-    d = ImageDraw.Draw(rgb)
-    top, bot = (64, 64, 68), (14, 14, 16)
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    top, bot = (64, 64, 68, 255), (14, 14, 16, 255)
     for y in range(H):
         f = y / max(H - 1, 1)
         d.line([(0, y), (W, y)],
                fill=tuple(int(top[i] + (bot[i] - top[i]) * f)
-                          for i in range(3)))
+                          for i in range(4)))
     d.rounded_rectangle([2, 2, W - 3, H - 3], radius=56,
                         outline=(255, 255, 255, 40), width=3)
     d.line([(44, 18), (W - 44, 18)], fill=(255, 255, 255, 36), width=7)
@@ -114,9 +158,51 @@ def render_tile(main, sub, mark=""):
     mask = Image.new("L", (W, H), 0)
     ImageDraw.Draw(mask).rounded_rectangle([0, 0, W - 1, H - 1],
                                            radius=60, fill=255)
-    img = rgb.convert("RGBA")
     img.putalpha(mask)
-    return img.resize((TILE_W, TILE_H), Image.LANCZOS)
+    img = img.resize((TILE_W, TILE_H), Image.LANCZOS)
+    # Hard silhouette: colorkey windows punch one exact color, so any
+    # blended edge pixel would print as fringe. Threshold first, then
+    # flatten over that exact magenta.
+    hard = img.getchannel("A").point(lambda a: 255 if a >= 128 else 0)
+    flat = Image.new("RGB", img.size, (255, 0, 255))
+    flat.paste(img, mask=hard)
+    return flat
+
+
+def render_ring(frac):
+    """Gaze ring cursor as RGB (120x120). Pure (tested).
+
+    Dark outline, yellow ring, white charge arc, white dot; magenta
+    field punched by -transparentcolor. Tk canvas ovals aliased badly
+    (Nov 3: "pixelated"), so the ring renders in PIL at 2x and
+    downscales - same colorkey discipline as the tiles (thresholded
+    silhouette, no pink fringe). frac drives the white arc.
+    """
+    from PIL import Image, ImageDraw
+
+    S, R = 2, 120
+    W = R * S
+    img = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    cx = cy = W / 2
+    rr = 42 * S
+    d.ellipse([cx - rr - 5 * S, cy - rr - 5 * S,
+               cx + rr + 5 * S, cy + rr + 5 * S],
+              outline=(28, 28, 30, 255), width=9 * S)
+    d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr],
+              outline=(255, 214, 10, 255), width=4 * S)
+    if frac > 0.01:
+        d.arc([cx - rr, cy - rr, cx + rr, cy + rr],
+              start=270, end=270 + 360.0 * min(1.0, frac),
+              fill=(255, 255, 255, 255), width=7 * S)
+    d.ellipse([cx - 6 * S, cy - 6 * S, cx + 6 * S, cy + 6 * S],
+              fill=(255, 255, 255, 255),
+              outline=(255, 214, 10, 255), width=2 * S)
+    img = img.resize((R, R), Image.LANCZOS)
+    hard = img.getchannel("A").point(lambda a: 255 if a >= 128 else 0)
+    flat = Image.new("RGB", img.size, (255, 0, 255))
+    flat.paste(img, mask=hard)
+    return flat
 
 
 class Overlay:
@@ -125,16 +211,18 @@ class Overlay:
     WebView2 windows painted opaque white rectangles behind both the
     ring and the dock despite transparent=True, so all floating chrome
     lives here: -transparentcolor punches the real window shapes. The
-    ring is click-through; each dock tile is its own small window
-    (clicks land on tiles, the gap stays interactive) with mouse
-    bindings for the caregiver and gaze zones from tile_rects. Tiles
-    fade to ghost alpha until the gaze comes near, so they sit over
-    the app without covering it. Callbacks fire on mouse click.
-    Owned end-to-end by the watcher's thread.
+    ring carries no click-through flag (it broke painting on Win11);
+    the engine hides it for each injected click via the RING_HIDE
+    handshake instead. Each dock tile is its own small window (clicks
+    land on tiles, the gap stays interactive) with mouse bindings
+    for the caregiver and gaze zones from tile_rects. Tiles fade to
+    ghost alpha until the gaze comes near, so they sit over the app
+    without covering it. Callbacks fire on mouse click. Owned
+    end-to-end by the watcher's thread.
     """
 
     RING = 120
-    GHOST, SOLID = 0.45, 1.0
+    GHOST, SOLID = 0.70, 1.0
 
     def __init__(self, on_back, on_kb):
         import tkinter as tk
@@ -142,16 +230,15 @@ class Overlay:
         root = tk.Tk()
         root.withdraw()
         self._root = root
-        self._ring = self._float(root, self.RING, self.RING,
-                                 click_through=True)
-        self._cv = tk.Canvas(self._ring, width=self.RING,
-                             height=self.RING, bg="magenta",
-                             highlightthickness=0, bd=0)
-        self._cv.pack()
+        self._ring = self._float(root, self.RING, self.RING)
+        self._ring_lab = tk.Label(self._ring, bg="magenta", bd=0,
+                                  highlightthickness=0)
+        self._ring_lab.pack()
+        self._ring_photo = None
         self._ring_shown = False
         self._tiles, self._photos = [], []
         for cb in (on_back, on_kb):
-            t = self._float(root, TILE_W, TILE_H, click_through=False)
+            t = self._float(root, TILE_W, TILE_H)
             lab = tk.Label(t, bg="magenta", bd=0, highlightthickness=0)
             lab.pack()
             lab.bind("<Button-1>", lambda _e, f=cb: f())
@@ -160,7 +247,11 @@ class Overlay:
         self._alpha = None
 
     @staticmethod
-    def _float(root, w, h, click_through):
+    def _float(root, w, h):
+        # No WS_EX_TRANSPARENT flag: it kept the ring window from
+        # painting at all on Win11 (Nov 3). Clicks pass by hiding the
+        # ring for their duration instead (RING_HIDE handshake with
+        # the engine), the desktop.py recipe that already worked.
         import tkinter as tk
 
         t = tk.Toplevel(root)
@@ -171,33 +262,16 @@ class Overlay:
         t.geometry(f"{w}x{h}+-400+-400")
         t.withdraw()
         t.update_idletasks()
-        if click_through:
-            try:
-                import ctypes
-
-                hwnd = t.winfo_id()
-                ex = ctypes.windll.user32.GetWindowLongW(hwnd, -20)
-                ctypes.windll.user32.SetWindowLongW(hwnd, -20,
-                                                    ex | 0x20 | 0x80000)
-            except Exception:
-                pass
         return t
 
     def ring_draw(self, x, y, frac):
-        c, s = self._cv, self.RING
-        cx = cy = s / 2
-        rr = 42
-        c.delete("all")
-        c.create_oval(cx - rr - 5, cy - rr - 5, cx + rr + 5, cy + rr + 5,
-                      outline="#1c1c1e", width=9)
-        c.create_oval(cx - rr, cy - rr, cx + rr, cy + rr,
-                      outline="#ffd60a", width=4)
-        if frac > 0.01:
-            c.create_arc(cx - rr, cy - rr, cx + rr, cy + rr, start=90,
-                         extent=-360.0 * min(1.0, frac), outline="#ffffff",
-                         width=7, style="arc")
-        c.create_oval(cx - 6, cy - 6, cx + 6, cy + 6,
-                      fill="#ffffff", outline="#ffd60a", width=2)
+        import tkinter as tk
+
+        s = self.RING
+        photo = tk.PhotoImage(master=self._root,
+                              data=self._png(render_ring(frac)))
+        self._ring_photo = photo  # else Tk garbage-collects it
+        self._ring_lab.configure(image=photo)
         self._ring.geometry(f"{s}x{s}+{int(x - s / 2)}+{int(y - s / 2)}")
         if not self._ring_shown:
             self._ring.deiconify()
@@ -211,6 +285,15 @@ class Overlay:
             except Exception:
                 pass
             self._ring_shown = False
+
+    def ring_state(self):
+        """(shown, viewable, geometry) for the heartbeat. Never raises."""
+        try:
+            return (self._ring_shown,
+                    bool(self._ring.winfo_viewable()),
+                    self._ring.winfo_geometry())
+        except Exception:
+            return (False, False, "?")
 
     def dock_show(self, rects_abs, tiles):
         """rects_abs: [(x, y, w, h)]; tiles: [(main, sub, mark)]."""
@@ -304,11 +387,14 @@ def main():
 
     def _watch():
         from app.i18n import s as _s
+        from app.inject import foreground_title as _fg
 
         placed = False
         last_launch = [None]
-        mon = {"rect": None, "zone": None, "since": 0.0}
+        mon = {"rect": None, "zone": None, "since": 0.0, "hb": 0.0,
+               "pending": None, "pending_since": 0.0}
         ov = {"inst": None}
+        ov_err = [False]  # first overlay failure prints, rest stay quiet
 
         def _overlay():
             if ov["inst"] is None:
@@ -385,6 +471,16 @@ def main():
                 _l, _t, mw, mh = mon["rect"]
                 zone = None
                 o = _overlay()
+                hide_ring = RING_HIDE.is_set()
+                if hide_ring:
+                    # Engine is clicking under the ring: withdraw it
+                    # (no click-through flag) and confirm, this tick.
+                    if o is not None:
+                        try:
+                            o.ring_hide()
+                        except Exception:
+                            pass
+                    RING_HIDDEN.set()
                 if gaze:
                     gx, gy = gaze[0] * mw, gaze[1] * mh
                     (brect, krect) = tile_rects(mw, mh)
@@ -392,15 +488,17 @@ def main():
                         zone = "back"
                     elif in_rect(gx, gy, krect):
                         zone = "kb"
-                    if o is not None:
+                    if o is not None and not hide_ring:
                         try:
                             o.ring_draw(_l + gx, _t + gy,
                                         st.get("dwell_frac") or 0.0)
                             rx, ry, rw, rh = overlay_rect(mw, mh)
                             near = (gx > rx - 260 and gy < ry + rh + 260)
                             o.dock_alpha(o.SOLID if near else o.GHOST)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            if not ov_err[0]:
+                                ov_err[0] = True
+                                print(f"overlay ring failed: {e!r}")
                 elif o is not None:
                     try:
                         o.ring_hide()
@@ -408,18 +506,23 @@ def main():
                     except Exception:
                         pass
                 now_m = time.monotonic()
-                if zone is None:
-                    mon["zone"] = None
-                elif mon["zone"] != zone:
-                    mon["zone"] = zone
-                    mon["since"] = now_m
+                if now_m - mon["hb"] >= 5.0:
+                    mon["hb"] = now_m
+                    ring = (round(_l + gx), round(_t + gy)) if gaze else None
+                    rs = o.ring_state() if o is not None else None
+                    print(f"overlay hb: launched={launched} gaze={gaze} "
+                          f"ring={ring} rs={rs} fg={_fg()!r}")
+                event, mem = tile_dwell_next(
+                    {k: mon[k] for k in ("zone", "since", "pending",
+                                        "pending_since")}, zone, now_m)
+                mon.update(mem)
+                if event == "started":
                     print(f"dwell {zone} started gaze={gaze}")
-                elif now_m - mon["since"] >= 0.8:
+                elif event == "fired":
                     print(f"dwell {zone} fired")
                     if zone == "kb":
                         KB_EVENT.set()
                     _restore()
-                    mon["zone"] = None
             if RETURN_EVENT.is_set() and ov["inst"] and ov["inst"].dock_shown:
                 _restore()
             if not placed and SETUP["choice"] is not None:
