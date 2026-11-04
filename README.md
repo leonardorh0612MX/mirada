@@ -48,6 +48,18 @@ trips PowerShell execution policies); all commands call the project's
 Python directly. The face model (`data/face_landmarker.task`) ships in the
 repo, so nothing downloads at first run.
 
+### 🤖 Or paste this to your Muse agent
+
+Copy the block below into Muse Code and it will set the project up for you:
+
+```text
+Set up and launch the mirada gaze board in C:\path\to\mirada (Windows 11, PowerShell only):
+1. py -m venv .venv (skip if .venv exists), then .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+2. Run .\.venv\Scripts\python.exe -m unittest discover -s tests and report the count.
+3. Launch .\.venv\Scripts\python.exe mirada.py, pick screen/camera/language in the window, and report the console's voices + cameras lines.
+No API key needed (fully offline). Never run Activate.ps1. Stop and report the exact error if any step fails.
+```
+
 What happens next, inside the window:
 
 1. Pick your screen, camera and language (EN/ES) with live previews.
@@ -78,7 +90,7 @@ selections; tile-size uncertainty, a repeat cooldown and a posture
 guardrail keep bad labels from poisoning it. Start here:
 
 - `docs/ARCHITECTURE.md` — modules, data flow, interfaces.
-- `docs/DECISIONS.md` — every technical decision with alternatives (D1–D39).
+- `docs/DECISIONS.md` — every technical decision with alternatives (D1–D43).
 - `docs/RESEARCH.md` — verified prior art (WebGazer, Aria, Online-EYE…).
 
 ## Where the Meta models run
@@ -136,7 +148,7 @@ replay strategies, `recorder/` session logs.
 .\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
-233 tests, all green. Covers calibration math, blink/hold detection,
+249 tests, all green. Covers calibration math, blink/hold detection,
 fusion guards, language tables, dock geometry, keyboard injection,
 config round-trips and replay determinism.
 
