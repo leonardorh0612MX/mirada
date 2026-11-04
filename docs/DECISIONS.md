@@ -266,3 +266,8 @@ Format per decision: choice, alternatives, rationale, status. Status is Proposed
 - Note: same run confirmed D34 again (261/227 first try, no unsteady dots) and posture-return robustness (stood up, sat back, map held).
 - Status: Accepted, pending live. 233 tests OK (loop behavior, covered live). Live check: unplug the camera mid-board (expect CAMERA LOST + message); replug (expect reopen + camera back).
 
+## D40. Splash holds for a cue (Nov 4)
+
+- Choice: the splash auto-advanced on a fixed 2.5 s timer, so narration couldn't pace it. It now waits for click/Space/Enter (hint fades in after the typewriter), with a 12 s auto-fallback so real users are never stranded. Demo direction: hold the logo through the opening line, advance mid-problem-beat.
+- Status: Accepted, pending live. Page script node-checked. Live check: splash sits until clicked; hint appears; setup loads on advance.
+
