@@ -1,9 +1,18 @@
 # Mirada — look + hold to speak
 
-A gaze communication board that runs on an ordinary webcam. No headset, no
-eye tracker, no per-frame cloud calls: look at a cell, close your eyes for
-~0.4 s, and the computer speaks. Built for the Meta Global AI Developer
-Hackathon (accessibility track).
+A new answer to the oldest problem in cheap eye tracking: drift.
+Mirada's innovation, semantic recalibration, pairs a local ~30fps gaze
+model with sparse semantic anchors — Muse Spark infers where you almost
+certainly looked, SAM 3.1 pinpoints it to the pixel, a tiny online
+corrector absorbs the fix. Measured on recorded sessions, not claimed
+(pilot, n=2: anchors cut mean error 406→397px while uncorrected drift
+explodes 63→941px in 15 min). The same anchors could correct gaze
+drift in AR headsets next.
+
+It ships as a gaze communication board on an ordinary webcam: look at a
+cell, close your eyes ~0.4 s, and the computer speaks. No headset, no
+eye tracker, no per-frame cloud calls. Built for the Meta Global AI
+Developer Hackathon.
 
 Demo video: [watch on YouTube](https://www.youtube.com/watch?v=DwyqqIZb-T8).
 
@@ -13,12 +22,13 @@ week.
 
 ## Why it's special
 
+- **A new method: semantic recalibration.** Every selection you confirm
+  becomes a semantic anchor — Spark proposes, SAM pinpoints — that
+  re-biases the gaze map through a small trust-capped online corrector;
+  a posture guard freezes learning outside your calibrated pose. The
+  replay harness scores it against baselines on real recorded sessions.
 - **Zero hardware beyond a webcam.** A $30 camera replaces a $5,000
   dedicated eye tracker for phrase-level communication.
-- **It corrects its own drift.** Every selection you confirm becomes a
-  semantic anchor that re-biases the gaze map (small online correction,
-  trust-capped); a posture guard freezes learning when you leave your
-  calibrated pose instead of learning garbage.
 - **It works inside real apps.** An APPS page launches Discord, the
   browser, YouTube and more with huge tiles; your gaze then becomes the
   mouse (look freely, close your eyes 0.4 s to click — same grammar as
