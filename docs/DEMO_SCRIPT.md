@@ -1,103 +1,130 @@
-# Mirada — demo video script (3:00 hard cap, 2:50 target)
+# Mirada — demo video script (3:00 hard cap, footage locked 2:41)
 
-Judges stop watching at 3:00 — so we target 2:50 and leave 10 s of
-safety for the end card. English voiceover + English subtitles.
-Screen recording (monitor 1) + facecam PiP bottom-right ~300px, static
-all take. Every scene below was verified live on master (`738aa37`).
+Judges stop watching at 3:00. Footage locked Nov 4 (2:41) + 12 s
+terminal insert + 4 s end card = ~2:53 target. English voiceover +
+English subtitles. Screen recording (monitor 1) + facecam PiP
+bottom-right ~300px, static all take.
 
 On-screen stat captions (free: they cost zero narration seconds, and
-judges remember numbers): "$0 hardware", "holds 14/15", "−2.2% error
-vs baseline (honest n=2 pilot)". Place each over its scene, small,
-lower-third, 3 s.
+judges remember numbers): "$0 hardware" (over calibration), "holds
+14/15" (over board cells), "−2.2% vs baseline, honest n=2 pilot"
+(over the terminal insert). Small, lower-third, 3 s each. The
+calibration stretch MUST carry a burned-in "SPED UP 4×" label
+(organizer rule).
 
-## Recording setup (OBS, 10 min)
+## Recording setup (10 min) — zero camera conflicts
 
-- Scene: monitor-1 capture full-frame + Logitech PiP bottom-right.
+Windows gives one app exclusive camera access, and merely OPENING OBS
+with a camera source (even hidden, even not recording) steals the
+device from Mirada. So OBS never touches a camera:
+
+- OBS: new Scene Collection "Mirada", ONE scene with ONLY Display
+  Capture (monitor 1). No Video Capture sources anywhere — check all
+  scenes, including hidden ones. Record SILENT (mic muted).
+- Face (front, proves the mechanism): laptop Camera app recording to
+  file, if the open lid sees your face; else a phone on tripod facing
+  you. PiP bottom-right in the edit (~300px, static all take).
   Bottom-right because the gaze tiles live top-right and must stay
-  visible; the PiP only covers a corner func cell at the very end.
-- Record takes SILENT (mic muted): screen + facecam must share one
-  take so eye↔action sync is real — never composite them from separate
-  recordings. Voiceover is recorded afterwards over the edit (perfect
-  timing, no filler words). 10 s test: ring, tiles, and your face
-  (eyes closing!) all visible before the real take.
+  visible.
+- Phone in PROFILE (you + screen + webcam) only for the first ~30 s
+  as establishing credibility, then cut to pure screen+PiP. Never two
+  PiPs at once (cluttered frame).
+- Sync: one hand clap in view of all cameras at take start (same
+  performance + slate = honest sync). Voiceover afterwards in post.
+- Order: start Mirada FIRST (pick Logitech, calibrate, reach board),
+  then start all three recordings. 10 s test: ring, tiles, and your
+  face (eyes closing!) all framing correctly before the real take.
 - Prep: close Teams/Zoom/extra tabs, USB selective suspend OFF, Logitech
   direct to laptop, frontal light on.
 
-## Script
+## Script — fitted to locked footage (voiceover recorded in post)
 
-### 0:00–0:12 — Opening (say exactly this)
+Pace: ~130 wpm, conversational. Stay SILENT under TTS cell speech
+and let UI sounds breathe. Pronounce "SAM" as "sam".
 
-> "Nothing existed before October 31st — no repo, no code. This week I
-> built Mirada, developed 100% on Meta models: full computer control
-> from a plain webcam."
+### 0:00–0:37 — Opening: hook + problem (face on camera)
 
-(On screen: logo holds on the hackathon credit line until you click
-or press Space — advance it mid-"problem" beat, on your cue.)
+> "Nothing existed before October thirty-first — no repo, no code.
+> This week I built Mirada, developed one hundred percent on Meta
+> models: full computer control from a plain webcam. Here's the
+> problem. Cheap eye tracking drifts within minutes — so anyone who
+> depends on gaze — ALS, spinal injury, motor impairments — must
+> recalibrate constantly, or pay five thousand dollars for a
+> dedicated tracker. Mirada is a look-plus-hold communication board
+> with semantic recalibration: a local thirty-fps gaze loop,
+> corrected by sparse AI anchors."
 
-### 0:12–0:30 — Problem and product
+(~79 words. Ends exactly as calibration starts at 0:37.)
 
-> "Cheap eye tracking drifts within minutes, so anyone who depends on
-> gaze — ALS, spinal injury, motor impairments — must recalibrate
-> constantly, or pay five thousand dollars for a dedicated tracker.
-> Mirada is a look-plus-hold communication board with semantic
-> recalibration: a local 30 fps gaze loop, corrected by sparse AI
-> anchors, so it holds calibration with no manual recal."
+### 0:37–1:18 — Enrollment at 4× (the explanation window)
 
-(On screen: setup screen — pick monitor, camera, language. Caption:
-"$0 hardware".)
+> "Enrollment: forty-three gaze-by-posture dots with spoken
+> instructions — sped up four times here. Each dot teaches a tiny
+> map from my eyes to the screen. And here is the key idea: every
+> time I confirm a selection, that choice becomes a semantic anchor
+> — Muse Spark reads the screen, SAM pinpoints it to the pixel —
+> and a small online corrector re-biases the map. Drift absorbed.
+> Automatically. No headset. No eye tracker. One thirty-dollar
+> webcam. It usually passes first try."
 
-### 0:30–0:42 — Enrollment montage (label: SPED UP 4×)
+(~75 words over 41 s — deliberately roomy; pause between sentences
+and let the dots carry the pace. Caption: "$0 hardware".)
 
-> "Forty-three gaze-by-posture dots with spoken instructions. It
-> usually passes first try."
-
-(On screen: 3 dots with voice, then cut to the board. Caption on
-screen: "43-point voice enrollment — sped up".)
-
-### 0:42–1:25 — Board, live (the heart — slow down here)
+### 1:18–1:38 — Board, live (the heart — get out of the way)
 
 > "Look at a cell, close your eyes for half a second — it speaks."
 
-(On screen, do it, don't rush — one cell every ~10 s:)
-WATER (hold visible in PiP + voice) → HELP → THANKS. Caption:
-"holds 14/15".
-Then: "Same grammar types anything:" KEYBOARD page, gaze-hold H-O-L-A.
+(Say ONLY this at 1:18. Then silence 1:21–1:38 while the cells
+speak. Optional tag at ~1:36 if a silent gap allows: "Eight huge
+cells, editable phrases, English and Spanish voices." Caption:
+"holds 14/15".)
 
-### 1:25–2:10 — Real apps (the wow)
+### 1:38–2:00 — Real apps (the wow)
 
-> "And the same grammar drives any app. My gaze is the mouse now: look
-> anywhere, close to click."
+> "And the same grammar drives any app. Watch: APPS — YouTube. My
+> gaze is the mouse now: look anywhere, close to click. Need to
+> type? That floating tile opens a full gaze keyboard."
 
-(On screen: APPS page → open YouTube (double-hold) → yellow ring
-follows gaze → hold-click a video → TECLADO tile → type "hola" →
-SEND → MIRADA tile back to the board. ~45 s, one smooth flow.)
+(~33 words. "APPS — YouTube" lands on the 1:38–1:43 tile taps;
+"floating tile" lands as the keyboard opens ~2:00.)
 
-### 2:10–2:40 — Meta models, live in the terminal
+### 2:00–2:27 — Typing "meta" (sync with the fingers-that-aren't)
 
-> "Click-based recalibration is the old way. Mirada innovates: Muse
-> Spark reads the screen and infers where you almost certainly looked,
-> and SAM 3.1 pinpoints it to the pixel — with Muse open-weights models
-> carrying the high-volume runs, Wonder on architecture review, and
-> Muse Image on artwork. Those semantic anchors correct the local
-> model — never per frame, only as labels. We're writing this up as a
-> research paper; the draft and the replay harness ship in the repo."
+> "Typing with nothing but my eyes — M, E, T, A — with word
+> completion finishing my thoughts. SEND delivers it straight into
+> YouTube search."
 
-(On screen, terminal, real commands:)
-`tools\gen_anchors.py data\<sess> --backend meta` — show the
-`models: muse-spark-1.3 (concepts) + sam-3.1 (boxes)` line + 3–4 live
-concept lines → `tools\replay_v2.py` A/B/C/D table (error-over-time).
-Caption over the table: "−2.2% vs baseline (honest n=2 pilot)".
+(~26 words. Spell the letters as they appear from 2:07; "SEND
+delivers it" lands on the 2:27 enter.)
 
-### 2:40–2:55 — Close: vision + run-it-yourself (say exactly this)
+### 2:27–2:41 — Payoff + close (say exactly this, brisk)
 
-> "No headset, no eye tracker — and it holds calibration. It runs
-> with no API key, just a webcam, so you can try it yourself. Next
-> stop: the same anchors correcting drift in headset gaze. Mirada:
-> look plus hold."
+> "Results — one gaze-click, and we're watching. No headset, no eye
+> tracker, no API key: just a webcam, so try it yourself. Next: the
+> same anchors for headset gaze. Mirada: look plus hold."
 
-(On screen: board, Shift+Q quit to black. End card 2:55–3:00: repo
-URL + "paper draft in repo". Total target 2:50–2:58 — never past
-3:00.)
+(~34 words over 14 s. "We're watching" lands on the Meta VR video
+select at 2:34; the rest runs over playback into the end card.)
+
+### Terminal insert (record separately, splice after 2:34)
+
+The locked footage never shows a Meta model call, and the rules
+require model calls visible. Record 12 s now (any session dir):
+
+```powershell
+.\.venv\Scripts\python.exe tools\gen_anchors.py data\sess-<date> --backend meta
+```
+
+Keep the `models: muse-spark-1.3 (concepts) + sam-3.1 (boxes)` line
++ 3–4 live concept lines. Splice: trim the video-play tail to ~3 s,
+insert the 12 s terminal, then the 4 s end card (repo URL + "paper
+draft in repo"). New total ≈ 2:53. Voiceover over the insert:
+
+> "The AI behind it, live: Spark proposes where I looked, SAM
+> pinpoints it, and the replay harness scores every strategy
+> offline. Honest numbers, paper draft in the repo."
+
+Caption over the insert: "−2.2% vs baseline, honest n=2 pilot".
 
 ## Rehearsal protocol (mandatory)
 
