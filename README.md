@@ -5,7 +5,7 @@ eye tracker, no per-frame cloud calls: look at a cell, close your eyes for
 ~0.4 s, and the computer speaks. Built for the Meta Global AI Developer
 Hackathon (accessibility track).
 
-Demo video: recorded Nov 3–4, linked here on submission day.
+Demo video: [watch on YouTube](https://www.youtube.com/watch?v=DwyqqIZb-T8).
 
 This repo was created for the event (initial commit Oct 31, 2026):
 nothing in it pre-exists the hackathon — every line was written this
